@@ -1,4 +1,91 @@
-#!/usr/bin/env python3
+# Handle config commands first
+    if args.command == "config":
+        if args.config_command == "create":
+            config = create_default_config()
+            save_config(config, args.path)
+            return
+        elif args.config_command == "view":
+            config = load_config(args.config)
+            print(yaml.dump(config, default_flow_style=False))
+            return
+        elif args.config_command == "add-key":
+            config_path = args.path
+            
+            # Load existing config or create new one
+            if os.path.exists(config_path):
+                config = load_config(config_path)
+            else:
+                config = create_default_config()
+            
+            # Add API key
+            config["api_key"] = args.api_key
+            save_config(config, config_path)
+            print(f"API key added to configuration")
+            return
+    
+    # Handle config commands first
+    if args.command == "config":
+        if args.config_command == "create":
+            config = create_default_config()
+            save_config(config, args.path)
+            return
+        elif args.config_command == "view":
+            config = load_config(args.config)
+            print(yaml.dump(config, default_flow_style=False))
+            return
+        elif args.config_command == "add-key":
+            config_path = args.path
+            
+            # Load existing config or create new one
+            if os.path.exists(config_path):
+                config = load_config(config_path)
+            else:
+                config = create_default_config()
+            
+            # Add API key
+            config["api_key"] = args.api_key
+            save_config(config, config_path)
+            print(f"API key added to configuration")
+            return
+    
+    # Handle process command
+    if args.command == "process":
+        process_certificates_from_config(args.config)
+        return
+    
+    # Load configuration
+    config = load_config(args.config)
+    
+    try:
+        # Override config with command line parameters if provided
+        if args.base_url:
+            if 'api' not in config:
+                config['api'] = {}
+            config['api']['base_url'] = args.base_url
+            
+        # Create API client with config
+        client = CertWardenClient(api_key=args.api_key, config_file=args.config)
+        
+        # Default output directory from config
+        output_dir = "."
+        if 'output' in config and 'directory' in config['output']:
+            output_dir = config['output']['directory']
+            # Create directory if it doesn't exist
+            os.makedirs(output_dir, exist_ok=True)
+            
+        # Default format from config
+        default_format = "pem"
+        if 'defaults' in config and 'format' in config['defaults']:
+            default_format = config['defaults']['format']
+            
+        # Default expiry days from config
+        default_expiry_days = 30
+        if 'defaults' in config and 'expiry_alert_days' in config['defaults']:
+            default_expiry_days = config['defaults']['expiry_alert_days']
+            
+        # Handle output directory from command args if provided
+        if hasattr(args, 'output_dir') and args.output_dir != ".":
+            output_dir = args.output_dir#!/usr/bin/env python3
 """
 CertWarden API Client
 
@@ -199,29 +286,97 @@ class CertWardenClient:
         response.raise_for_status()
         return response.json()
         
-    def get_private_cert_chains(self, certificate_ids=None, all_active=False, format="pem"):
+    def get_certificates_by_config(self, certificate_config):
         """
-        Retrieve certificates with their private keys and certificate chains
+        Retrieve certificates based on configuration
         
         Args:
-            certificate_ids (list, optional): List of certificate IDs to retrieve
-            all_active (bool): Whether to retrieve all active certificates
-            format (str): Format of the certificates/keys (pem, pkcs12, jks)
+            certificate_config (dict): Certificate configuration from YAML
             
         Returns:
-            dict: Certificates data with private keys and chains
+            list: Retrieved certificates
         """
-        endpoint = f"{self.base_url}/v1/certificates/privatecertchains"
+        results = []
         
-        data = {"format": format}
-        if certificate_ids:
-            data["certificate_ids"] = certificate_ids
-        if all_active:
-            data["all_active"] = True
+        # Process each certificate group from config
+        for group_name, group_config in certificate_config.items():
+            print(f"\nProcessing certificate group: {group_name}")
             
-        response = requests.post(endpoint, headers=self.headers, json=data)
-        response.raise_for_status()
-        return response.json()
+            # Determine retrieval method
+            method = group_config.get('method', 'individual')
+            format_type = group_config.get('format', 'pem')
+            
+            if method == 'individual':
+                # Get certificates by IDs
+                if 'certificates' in group_config:
+                    for cert_id in group_config['certificates']:
+                        try:
+                            print(f"  Retrieving certificate {cert_id}...")
+                            certificate = self.get_combined_certificate(cert_id, format=format_type)
+                            certificate['_group'] = group_name
+                            certificate['_output'] = group_config.get('output', {})
+                            results.append(certificate)
+                        except Exception as e:
+                            print(f"  Error retrieving certificate {cert_id}: {e}")
+                            
+            elif method == 'search':
+                # Get certificates by search query
+                if 'query' in group_config:
+                    try:
+                        print(f"  Searching for certificates with query: {group_config['query']}...")
+                        response = self.search_certificates(group_config['query'])
+                        certificates = response.get('certificates', [])
+                        print(f"  Found {len(certificates)} certificates")
+                        
+                        # Get full certificate data for each result
+                        for cert in certificates:
+                            try:
+                                certificate = self.get_combined_certificate(cert['id'], format=format_type)
+                                certificate['_group'] = group_name
+                                certificate['_output'] = group_config.get('output', {})
+                                results.append(certificate)
+                            except Exception as e:
+                                print(f"  Error retrieving certificate {cert['id']}: {e}")
+                    except Exception as e:
+                        print(f"  Error searching for certificates: {e}")
+                        
+            elif method == 'expiring':
+                # Get certificates that are expiring
+                days = group_config.get('days', 30)
+                try:
+                    print(f"  Retrieving certificates expiring in {days} days...")
+                    response = self.get_expiring_certificates(days=days)
+                    certificates = response.get('certificates', [])
+                    print(f"  Found {len(certificates)} expiring certificates")
+                    
+                    # Get full certificate data for each result
+                    for cert in certificates:
+                        try:
+                            certificate = self.get_combined_certificate(cert['id'], format=format_type)
+                            certificate['_group'] = group_name
+                            certificate['_output'] = group_config.get('output', {})
+                            results.append(certificate)
+                        except Exception as e:
+                            print(f"  Error retrieving certificate {cert['id']}: {e}")
+                except Exception as e:
+                    print(f"  Error retrieving expiring certificates: {e}")
+                    
+            elif method == 'all_active':
+                # Get all active certificates
+                try:
+                    print(f"  Retrieving all active certificates...")
+                    response = self.get_private_cert_chains(all_active=True, format=format_type)
+                    certificates = response.get('certificates', [])
+                    print(f"  Found {len(certificates)} active certificates")
+                    
+                    for cert in certificates:
+                        cert['_group'] = group_name
+                        cert['_output'] = group_config.get('output', {})
+                        results.append(cert)
+                except Exception as e:
+                    print(f"  Error retrieving all active certificates: {e}")
+        
+        return results
 
 
 def display_certificates(certificates):
@@ -370,8 +525,7 @@ def create_default_config():
         "defaults": {
             "format": "pem",
             "expiry_alert_days": 30
-        },
-        "certificates": []  # Array of certificate IDs to fetch
+        }
     }
 
 
@@ -432,48 +586,6 @@ def save_config(config, config_path):
             print(f"Configuration saved to {config_path}")
     except Exception as e:
         print(f"Error saving config file: {e}")
-
-
-def setup_argument_parser():
-    """
-    Set up command line argument parser
-    
-    Returns:
-        argparse.ArgumentParser: Configured argument parser
-    """
-    parser = argparse.ArgumentParser(
-        description="CertWarden API Client",
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    
-    # Global arguments
-    parser.add_argument("--api-key", help="API key for authentication")
-    parser.add_argument("--config", help="Path to configuration file")
-    parser.add_argument("--base-url", help="Base URL for the API")
-    
-    # Subcommands
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-    
-    # Config management commands
-    config_parser = subparsers.add_parser("config", help="Configuration management")
-    config_subparsers = config_parser.add_subparsers(dest="config_command", help="Config operation")
-    
-    # Create config command
-    create_config_parser = config_subparsers.add_parser("create", help="Create default configuration file")
-    create_config_parser.add_argument("--path", default="~/.certwarden/config.yaml", help="Path to save configuration file")
-    
-    # View config command
-    view_config_parser = config_subparsers.add_parser("view", help="View current configuration")
-    
-    # Add API key to config command
-    add_key_parser = config_subparsers.add_parser("add-key", help="Add API key to configuration")
-    add_key_parser.add_argument("api_key", help="API key to add")
-    add_key_parser.add_argument("--path", default="~/.certwarden/config.yaml", help="Path to configuration file")
-    
-    # Add certificate ID to config command
-    add_cert_parser = config_subparsers.add_parser("add-cert", help="Add certificate ID to configuration")
-    add_cert_parser.add_argument("certificate_id", help="Certificate ID to add")
-    add_cert_parser.add_argument("--path", default="~/.certwarden/config.yaml", help="Path to configuration file")
     
     # List certificates command
     list_parser = subparsers.add_parser("list", help="List certificates")
@@ -511,25 +623,11 @@ def setup_argument_parser():
     chains_parser = subparsers.add_parser("privatecertchains", help="Get certificates with private keys and chains")
     chains_parser.add_argument("--certificate-ids", nargs="*", help="IDs of certificates to retrieve")
     chains_parser.add_argument("--all-active", action="store_true", help="Retrieve all active certificates")
-    chains_parser.add_argument("--from-config", action="store_true", help="Use certificate IDs from config file")
     chains_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
                              help="Format of the certificates/keys")
     chains_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
     
-    return parser
-
-
-def main():
-    """
-    Main function for the CertWarden CLI
-    """
-    parser = setup_argument_parser()
     args = parser.parse_args()
-    
-    # If no command provided, show help
-    if not args.command:
-        parser.print_help()
-        return
     
     # Handle config commands first
     if args.command == "config":
@@ -554,27 +652,6 @@ def main():
             config["api_key"] = args.api_key
             save_config(config, config_path)
             print(f"API key added to configuration")
-            return
-        elif args.config_command == "add-cert":
-            config_path = args.path
-            
-            # Load existing config or create new one
-            if os.path.exists(config_path):
-                config = load_config(config_path)
-            else:
-                config = create_default_config()
-            
-            # Initialize certificates array if not present
-            if 'certificates' not in config:
-                config['certificates'] = []
-            
-            # Add certificate ID if not already in the list
-            if args.certificate_id not in config['certificates']:
-                config['certificates'].append(args.certificate_id)
-                save_config(config, config_path)
-                print(f"Certificate ID '{args.certificate_id}' added to configuration")
-            else:
-                print(f"Certificate ID '{args.certificate_id}' already in configuration")
             return
     
     # Load configuration
@@ -647,25 +724,13 @@ def main():
                 save_combined_certificate(cert, output_dir=output_dir, config=config)
                 
         elif args.command == "privatecertchains":
-            certificate_ids = args.certificate_ids
-            
-            # If --from-config flag is used, get certificate IDs from config
-            if args.from_config:
-                if 'certificates' in config and config['certificates']:
-                    certificate_ids = config['certificates']
-                    print(f"Using certificate IDs from config: {', '.join(certificate_ids)}")
-                else:
-                    print("No certificate IDs found in config file")
-                    return
-            
-            # Error if no certificates are specified in any way
-            if not certificate_ids and not args.all_active:
-                print("Error: Either --certificate-ids, --all-active, or --from-config must be specified")
+            if not args.certificate_ids and not args.all_active:
+                print("Error: Either --certificate-ids or --all-active must be specified")
                 return
                 
             format_type = args.format if hasattr(args, 'format') else default_format
             response = client.get_private_cert_chains(
-                certificate_ids=certificate_ids, 
+                certificate_ids=args.certificate_ids, 
                 all_active=args.all_active,
                 format=format_type
             )
@@ -675,6 +740,9 @@ def main():
             
             for cert in certificates:
                 save_combined_certificate(cert, output_dir=output_dir, config=config)
+                
+        elif args.command == "process":
+            process_certificates_from_config(args.config)
             
         else:
             parser.print_help()

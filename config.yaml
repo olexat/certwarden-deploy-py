@@ -1,16 +1,76 @@
+# CertWarden API Client Configuration
+
+# Your API key for authentication
+api_key: "your_api_key_here"
+
+# API configuration
 api:
-  base_url: https://api.certwarden.com
+  base_url: "https://api.certwarden.com"
   headers:
-    Content-Type: application/json
-certificates: []
-defaults:
-  expiry_alert_days: 30
-  format: pem
+    Content-Type: "application/json"
+
+# Output configuration
 output:
-  directory: ./certificates
+  directory: "./certificates"
+  filename_template: "{common_name}_{cert_id}"
   extensions:
-    certificate: .crt
-    chain: _chain.pem
-    combined: _combined.pem
-    private_key: .key
-  filename_template: '{common_name}_{cert_id}'
+    certificate: ".crt"
+    private_key: ".key"
+    chain: "_chain.pem"
+    combined: "_combined.pem"
+
+# Default options
+defaults:
+  format: "pem"
+  expiry_alert_days: 30
+
+# Certificate groups to retrieve
+certificates:
+  # Group 1: Retrieve specific certificates by ID
+  production_web_servers:
+    method: "individual"
+    format: "pem"
+    certificates:
+      - "cert_123abc"
+      - "cert_456def"
+    output:
+      directory: "./certificates/production"
+  
+  # Group 2: Retrieve certificates by search query
+  wildcard_certificates:
+    method: "search"
+    format: "pem"
+    query: "*.example.com"
+    output:
+      directory: "./certificates/wildcard"
+  
+  # Group 3: Retrieve expiring certificates
+  expiring_certificates:
+    method: "expiring"
+    format: "pem"
+    days: 30
+    output:
+      directory: "./certificates/expiring"
+  
+  # Group 4: Retrieve all active certificates
+  all_active:
+    method: "all_active"
+    format: "pem"
+    output:
+      directory: "./certificates/{group}"
+  
+  # Group 5: Certificates for specific servers with custom output
+  nginx_servers:
+    method: "search"
+    format: "pem"
+    query: "nginx"
+    output:
+      directory: "./certificates/nginx"
+      # Use nginx-specific naming convention
+      filename_template: "{common_name}.combined"
+      extensions:
+        certificate: ".crt"
+        private_key: ".key"
+        chain: ".chain"
+        combined: ".fullchain"
+
