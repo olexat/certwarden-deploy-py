@@ -39,18 +39,13 @@ class CertWardenClient:
                 print(f"Error loading config file: {e}")
                 sys.exit(1)
         
-        # API key priority: 1. explicit parameter, 2. config file, 3. environment variable
-        self.api_key = api_key or self.config.get('api_key') or os.environ.get("CERTWARDEN_API_KEY")
-        if not self.api_key:
-            raise ValueError("API key must be provided either directly, via config file, or via CERTWARDEN_API_KEY environment variable")
-        
         # Base URL priority: 1. explicit parameter, 2. config file, 3. default
         self.base_url = base_url
-        if 'api' in self.config and 'base_url' in self.config['api']:
-            self.base_url = self.config['api']['base_url']
+        if 'base_url' in self.config:
+            self.base_url = self.config['base_url']
             
+        # Default headers (will be overridden for specific API calls)
         self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
         
@@ -58,7 +53,50 @@ class CertWardenClient:
         if 'api' in self.config and 'headers' in self.config['api']:
             for key, value in self.config['api']['headers'].items():
                 self.headers[key] = value
+        
+        # Store the default API key (if provided)
+        self.default_api_key = api_key or os.environ.get("CERTWARDEN_API_KEY")
+        
+        # Store API keys from config (will be used for specific certificate/key operations)
+        self.api_keys = {}
+        if 'certificates' in self.config:
+            for group_name, group_config in self.config['certificates'].items():
+                for cert_name in group_config.get('certificates', []):
+                    # Get certificate-specific API keys
+                    cert_secret = group_config.get('cert_secret')
+                    key_secret = group_config.get('key_secret')
+                    
+                    if cert_secret and key_secret:
+                        self.api_keys[cert_name] = {
+                            'cert': cert_secret,
+                            'key': key_secret,
+                            'combined': f"{cert_secret}.{key_secret}"  # For combined API calls
+                        }
 
+    def _get_api_headers(self, certificate_id=None, operation_type=None):
+        """
+        Get the appropriate headers for a specific certificate and operation
+        
+        Args:
+            certificate_id (str): ID of the certificate
+            operation_type (str): Type of operation ('cert', 'key', or 'combined')
+            
+        Returns:
+            dict: Headers with appropriate API key
+        """
+        headers = self.headers.copy()
+        
+        # Use certificate-specific API key if available
+        if certificate_id and certificate_id in self.api_keys and operation_type:
+            if operation_type in self.api_keys[certificate_id]:
+                api_key = self.api_keys[certificate_id][operation_type]
+                headers["X-API-Key"] = api_key
+        # Fallback to default API key if certificate-specific key not found
+        elif self.default_api_key:
+            headers["X-API-Key"] = self.default_api_key
+            
+        return headers
+        
     def get_certificates(self, limit=100, offset=0, status=None):
         """
         Retrieve certificates from the API
@@ -71,7 +109,7 @@ class CertWardenClient:
         Returns:
             dict: API response containing certificate data
         """
-        endpoint = f"{self.base_url}/v1/certificates"
+        endpoint = f"{self.base_url}/v1/download/certificates"
         params = {
             "limit": limit,
             "offset": offset
@@ -80,7 +118,8 @@ class CertWardenClient:
         if status:
             params["status"] = status
             
-        response = requests.get(endpoint, headers=self.headers, params=params)
+        headers = self._get_api_headers(operation_type='cert')
+        response = requests.get(endpoint, headers=headers, params=params)
         response.raise_for_status()
         return response.json()
     
@@ -94,8 +133,9 @@ class CertWardenClient:
         Returns:
             dict: Certificate data
         """
-        endpoint = f"{self.base_url}/v1/certificates/{certificate_id}"
-        response = requests.get(endpoint, headers=self.headers)
+        endpoint = f"{self.base_url}/v1/download/certificates/{certificate_id}"
+        headers = self._get_api_headers(certificate_id=certificate_id, operation_type='cert')
+        response = requests.get(endpoint, headers=headers)
         response.raise_for_status()
         return response.json()
     
@@ -109,9 +149,10 @@ class CertWardenClient:
         Returns:
             dict: Search results
         """
-        endpoint = f"{self.base_url}/v1/certificates/search"
+        endpoint = f"{self.base_url}/v1/download/certificates/search"
         params = {"q": query}
-        response = requests.get(endpoint, headers=self.headers, params=params)
+        headers = self._get_api_headers(operation_type='cert')
+        response = requests.get(endpoint, headers=headers, params=params)
         response.raise_for_status()
         return response.json()
     
@@ -125,8 +166,9 @@ class CertWardenClient:
         Returns:
             dict: Created certificate data
         """
-        endpoint = f"{self.base_url}/v1/certificates"
-        response = requests.post(endpoint, headers=self.headers, json=certificate_data)
+        endpoint = f"{self.base_url}/v1/download/certificates"
+        headers = self._get_api_headers(operation_type='cert')
+        response = requests.post(endpoint, headers=headers, json=certificate_data)
         response.raise_for_status()
         return response.json()
     
@@ -141,9 +183,10 @@ class CertWardenClient:
         Returns:
             dict: Response data
         """
-        endpoint = f"{self.base_url}/v1/certificates/{certificate_id}/revoke"
+        endpoint = f"{self.base_url}/v1/download/certificates/{certificate_id}/revoke"
+        headers = self._get_api_headers(certificate_id=certificate_id, operation_type='cert')
         data = {"reason": reason}
-        response = requests.post(endpoint, headers=self.headers, json=data)
+        response = requests.post(endpoint, headers=headers, json=data)
         response.raise_for_status()
         return response.json()
     
@@ -157,9 +200,10 @@ class CertWardenClient:
         Returns:
             dict: Expiring certificates
         """
-        endpoint = f"{self.base_url}/v1/certificates/expiring"
+        endpoint = f"{self.base_url}/v1/download/certificates/expiring"
         params = {"days": days}
-        response = requests.get(endpoint, headers=self.headers, params=params)
+        headers = self._get_api_headers(operation_type='cert')
+        response = requests.get(endpoint, headers=headers, params=params)
         response.raise_for_status()
         return response.json()
         
@@ -174,9 +218,10 @@ class CertWardenClient:
         Returns:
             dict: Certificate data with private key
         """
-        endpoint = f"{self.base_url}/v1/certificates/{certificate_id}/combined"
+        endpoint = f"{self.base_url}/v1/download/certificates/{certificate_id}/combined"
         params = {"format": format}
-        response = requests.get(endpoint, headers=self.headers, params=params)
+        headers = self._get_api_headers(certificate_id=certificate_id, operation_type='combined')
+        response = requests.get(endpoint, headers=headers, params=params)
         response.raise_for_status()
         return response.json()
     
@@ -191,12 +236,18 @@ class CertWardenClient:
         Returns:
             dict: Certificates data with private keys
         """
-        endpoint = f"{self.base_url}/v1/certificates/combined/bulk"
+        endpoint = f"{self.base_url}/v1/download/certificates/combined/bulk"
         data = {
             "certificate_ids": certificate_ids,
             "format": format
         }
-        response = requests.post(endpoint, headers=self.headers, json=data)
+        
+        # Since this is a bulk operation, we don't have a specific certificate ID
+        # We'll use the first certificate's API key as a fallback
+        certificate_id = certificate_ids[0] if certificate_ids else None
+        headers = self._get_api_headers(certificate_id=certificate_id, operation_type='combined')
+        
+        response = requests.post(endpoint, headers=headers, json=data)
         response.raise_for_status()
         return response.json()
         
@@ -212,15 +263,19 @@ class CertWardenClient:
         Returns:
             dict: Certificates data with private keys and chains
         """
-        endpoint = f"{self.base_url}/v1/certificates/privatecertchains"
+        endpoint = f"{self.base_url}/v1/download/certificates/privatecertchains"
         
         data = {"format": format}
         if certificate_ids:
             data["certificate_ids"] = certificate_ids
         if all_active:
             data["all_active"] = True
-            
-        response = requests.post(endpoint, headers=self.headers, json=data)
+        
+        # Since this could be a bulk operation, we'll use the first certificate's API key if provided
+        certificate_id = certificate_ids[0] if certificate_ids else None
+        headers = self._get_api_headers(certificate_id=certificate_id, operation_type='combined')
+        
+        response = requests.post(endpoint, headers=headers, json=data)
         response.raise_for_status()
         return response.json()
     
@@ -234,8 +289,9 @@ class CertWardenClient:
         Returns:
             dict: Private key data
         """
-        endpoint = f"{self.base_url}/v1/certificates/{certificate_id}/key"
-        response = requests.get(endpoint, headers=self.headers)
+        endpoint = f"{self.base_url}/v1/download/certificates/{certificate_id}/key"
+        headers = self._get_api_headers(certificate_id=certificate_id, operation_type='key')
+        response = requests.get(endpoint, headers=headers)
         response.raise_for_status()
         return response.json()
         
@@ -249,9 +305,14 @@ class CertWardenClient:
         Returns:
             dict: Private keys data
         """
-        endpoint = f"{self.base_url}/v1/certificates/keys/bulk"
+        endpoint = f"{self.base_url}/v1/download/certificates/keys/bulk"
         data = {"certificate_ids": certificate_ids}
-        response = requests.post(endpoint, headers=self.headers, json=data)
+        
+        # Since this is a bulk operation, we'll use the first certificate's key API key as a fallback
+        certificate_id = certificate_ids[0] if certificate_ids else None
+        headers = self._get_api_headers(certificate_id=certificate_id, operation_type='key')
+        
+        response = requests.post(endpoint, headers=headers, json=data)
         response.raise_for_status()
         return response.json()
         
@@ -949,4 +1010,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -1,11 +1,10 @@
-# CertWarden API Client Configuration with Actions
+# CertWarden API Client Configuration with Separate API Keys
 
-# Your API key for authentication
-api_key: "your_api_key_here"
+# Base URL of the CertWarden instance
+base_url: "https://certwarden.example.com"
 
-# API configuration
+# Global API headers (applied to all requests)
 api:
-  base_url: "https://api.certwarden.com"
   headers:
     Content-Type: "application/json"
 
@@ -30,14 +29,16 @@ actions:
 
 # Certificate groups to retrieve
 certificates:
-  # Group 1: Retrieve specific certificates with their private keys
+  # Group 1: Production web server certificates
   production_web_servers:
     method: "individual"
     format: "pem"
-    include_key: true  # Include private keys (default)
+    # Certificate-specific API keys
+    cert_secret: "examplekey_notvalid_cert123"  # API key for certificate operations
+    key_secret: "examplekey_notvalid_key456"    # API key for private key operations
     certificates:
-      - "cert_123abc"
-      - "cert_456def"
+      - "example.com"
+      - "api.example.com"
     output:
       directory: "./certificates/production"
     # Action to run after certificate retrieval
@@ -45,12 +46,13 @@ certificates:
       command: "cp {certificate} {private_key} /etc/nginx/ssl/ && systemctl reload nginx"
       run_on: "new"  # Only run for new certificates
   
-  # Group 2: Retrieve certificates without keys, then fetch keys separately
+  # Group 2: Wildcard certificates
   wildcard_certificates:
     method: "search"
     format: "pem"
-    include_key: false  # Don't include private keys in initial fetch
-    fetch_keys: true    # Fetch keys separately
+    # Certificate-specific API keys
+    cert_secret: "examplekey_notvalid_cert789"  # API key for certificate operations
+    key_secret: "examplekey_notvalid_key101"    # API key for private key operations
     query: "*.example.com"
     output:
       directory: "./certificates/wildcard"
@@ -59,12 +61,13 @@ certificates:
       command: "cp {combined} /etc/haproxy/ssl/ && systemctl reload haproxy"
       run_on: "all"  # Run for all certificates
   
-  # Group 3: Retrieve expiring certificates without private keys
+  # Group 3: Expiring certificates
   expiring_certificates:
     method: "expiring"
     format: "pem"
-    include_key: false  # Don't include private keys
-    fetch_keys: false   # Don't fetch keys separately
+    # Certificate-specific API keys
+    cert_secret: "examplekey_notvalid_cert202"  # API key for certificate operations
+    key_secret: "examplekey_notvalid_key303"    # API key for private key operations
     days: 30
     output:
       directory: "./certificates/expiring"
