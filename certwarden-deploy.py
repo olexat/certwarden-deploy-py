@@ -14,7 +14,24 @@ import sys
 from datetime import datetime
 import argparse
 from pathlib import Path
+import hashlib
+import subprocess
 
+
+def file_changed(filepath, new_content):
+    if not os.path.exists(filepath):
+        return True
+    with open(filepath, "rb") as f:
+        return hashlib.sha256(f.read()).digest() != hashlib.sha256(new_content).digest()
+
+
+def execute_on_success_command(command):
+    try:
+        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print(f"Success command executed:\n{result.stdout.decode()}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing success command: {e.stderr.decode()}")
+        
 
 class CertWardenClient:
     """Client for interacting with the CertWarden API"""
@@ -236,10 +253,10 @@ def display_certificates(certificates):
         return
         
     for cert in certificates:
-    # Per-certificate on_success hook
-        cert_on_success = cert.get("on_success") or config.get("defaults", {}).get("on_success")
-        if cert_on_success:
-            execute_on_success_command(cert_on_success)
+#        # Per-certificate on_success hook
+#        cert_on_success = cert.get("on_success") or config.get("defaults", {}).get("on_success")
+#        if cert_on_success:
+#            execute_on_success_command(cert_on_success)
 
         print(f"\n{'-'*50}")
         print(f"Certificate ID: {cert.get('id')}")
@@ -697,12 +714,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-import subprocess
-
-def execute_on_success_command(command):
-    try:
-        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        print(f"Success command executed:\n{result.stdout.decode()}")
-    except subprocess.CalledProcessError as e:
-        print(f"Error executing success command: {e.stderr.decode()}")
