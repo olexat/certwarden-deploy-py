@@ -9,30 +9,54 @@ Documentation: https://www.certwarden.com/docs/using_certificates/api_calls/
 import requests
 import json
 import os
+import yaml
+import sys
 from datetime import datetime
 import argparse
+from pathlib import Path
 
 
 class CertWardenClient:
     """Client for interacting with the CertWarden API"""
     
-    def __init__(self, api_key=None, base_url="https://api.certwarden.com"):
+    def __init__(self, api_key=None, base_url="https://api.certwarden.com", config_file=None):
         """
         Initialize the CertWarden API client
         
         Args:
             api_key (str): API key for authentication (can also be set via CERTWARDEN_API_KEY env variable)
             base_url (str): Base URL for the API
+            config_file (str): Path to YAML config file
         """
-        self.api_key = api_key or os.environ.get("CERTWARDEN_API_KEY")
-        if not self.api_key:
-            raise ValueError("API key must be provided either directly or via CERTWARDEN_API_KEY environment variable")
+        # Load configuration from file if provided
+        self.config = {}
+        if config_file:
+            try:
+                with open(config_file, 'r') as file:
+                    self.config = yaml.safe_load(file) or {}
+            except Exception as e:
+                print(f"Error loading config file: {e}")
+                sys.exit(1)
         
+        # API key priority: 1. explicit parameter, 2. config file, 3. environment variable
+        self.api_key = api_key or self.config.get('api_key') or os.environ.get("CERTWARDEN_API_KEY")
+        if not self.api_key:
+            raise ValueError("API key must be provided either directly, via config file, or via CERTWARDEN_API_KEY environment variable")
+        
+        # Base URL priority: 1. explicit parameter, 2. config file, 3. default
         self.base_url = base_url
+        if 'api' in self.config and 'base_url' in self.config['api']:
+            self.base_url = self.config['api']['base_url']
+            
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+        
+        # Add additional headers from config if present
+        if 'api' in self.config and 'headers' in self.config['api']:
+            for key, value in self.config['api']['headers'].items():
+                self.headers[key] = value
     
     def get_certificates(self, limit=100, offset=0, status=None):
         """
@@ -240,13 +264,14 @@ def display_certificates(certificates):
         print(f"{'-'*50}")
 
 
-def save_combined_certificate(certificate_data, output_dir="."):
+def save_combined_certificate(certificate_data, output_dir=".", config=None):
     """
     Save combined certificate and private key to files
     
     Args:
         certificate_data (dict): Combined certificate data from API
         output_dir (str): Directory to save the files
+        config (dict): Configuration dictionary
     """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -254,27 +279,50 @@ def save_combined_certificate(certificate_data, output_dir="."):
     cert_id = certificate_data.get("id", "unknown")
     common_name = certificate_data.get("common_name", "unknown").replace("*", "wildcard")
     
+    # Use filename template from config if available
+    filename_template = "{common_name}_{cert_id}"
+    if config and 'output' in config and 'filename_template' in config['output']:
+        filename_template = config['output']['filename_template']
+    
+    # Replace template variables
+    filename = filename_template.format(
+        common_name=common_name,
+        cert_id=cert_id,
+        date=datetime.now().strftime("%Y%m%d")
+    )
+    
     # Sanitize filename
-    safe_name = "".join(c if c.isalnum() else "_" for c in common_name)
-    base_filename = f"{safe_name}_{cert_id}"
+    safe_name = "".join(c if c.isalnum() or c in ['_', '-', '.'] else "_" for c in filename)
+    base_filename = safe_name
+    
+    # Get file extensions from config if available
+    extensions = {
+        'certificate': '.crt',
+        'private_key': '.key',
+        'chain': '_chain.pem',
+        'combined': '_combined.pem'
+    }
+    
+    if config and 'output' in config and 'extensions' in config['output']:
+        extensions.update(config['output']['extensions'])
     
     # Save certificate
     if "certificate" in certificate_data:
-        cert_path = os.path.join(output_dir, f"{base_filename}.crt")
+        cert_path = os.path.join(output_dir, f"{base_filename}{extensions['certificate']}")
         with open(cert_path, "w") as f:
             f.write(certificate_data["certificate"])
         print(f"Certificate saved to: {cert_path}")
     
     # Save private key
     if "private_key" in certificate_data:
-        key_path = os.path.join(output_dir, f"{base_filename}.key")
+        key_path = os.path.join(output_dir, f"{base_filename}{extensions['private_key']}")
         with open(key_path, "w") as f:
             f.write(certificate_data["private_key"])
         print(f"Private key saved to: {key_path}")
     
     # Save full chain if available
     if "chain" in certificate_data:
-        chain_path = os.path.join(output_dir, f"{base_filename}_chain.pem")
+        chain_path = os.path.join(output_dir, f"{base_filename}{extensions['chain']}")
         with open(chain_path, "w") as f:
             f.write(certificate_data["chain"])
         print(f"Certificate chain saved to: {chain_path}")
@@ -289,18 +337,100 @@ def save_combined_certificate(certificate_data, output_dir="."):
             
         combined += "\n" + certificate_data["private_key"]
         
-        combined_path = os.path.join(output_dir, f"{base_filename}_combined.pem")
+        combined_path = os.path.join(output_dir, f"{base_filename}{extensions['combined']}")
         with open(combined_path, "w") as f:
             f.write(combined)
         print(f"Combined PEM file saved to: {combined_path}")
 
 
-def main():
-    """Main function to run the script"""
-    parser = argparse.ArgumentParser(description="CertWarden API Client")
-    parser.add_argument("--api-key", help="CertWarden API key (can also be set via CERTWARDEN_API_KEY env var)")
+def create_default_config():
+    """
+    Create a default configuration file
     
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+    Returns:
+        dict: Default configuration
+    """
+    return {
+        "api": {
+            "base_url": "https://api.certwarden.com",
+            "headers": {
+                "Content-Type": "application/json"
+            }
+        },
+        "output": {
+            "directory": "./certificates",
+            "filename_template": "{common_name}_{cert_id}",
+            "extensions": {
+                "certificate": ".crt",
+                "private_key": ".key",
+                "chain": "_chain.pem",
+                "combined": "_combined.pem"
+            }
+        },
+        "defaults": {
+            "format": "pem",
+            "expiry_alert_days": 30
+        }
+    }
+
+
+def load_config(config_path=None):
+    """
+    Load configuration from file or create default
+    
+    Args:
+        config_path (str): Path to config file
+        
+    Returns:
+        dict: Configuration dictionary
+    """
+    if not config_path:
+        # Check if config exists in default locations
+        default_locations = [
+            "./certwarden.yaml",
+            "./certwarden.yml",
+            "~/.certwarden/config.yaml",
+            "~/.certwarden/config.yml",
+            "/etc/certwarden/config.yaml",
+            "/etc/certwarden/config.yml"
+        ]
+        
+        for loc in default_locations:
+            expanded_path = os.path.expanduser(loc)
+            if os.path.exists(expanded_path):
+                config_path = expanded_path
+                break
+    
+    if config_path and os.path.exists(config_path):
+        try:
+            with open(config_path, 'r') as file:
+                config = yaml.safe_load(file) or {}
+                print(f"Loaded configuration from {config_path}")
+                return config
+        except Exception as e:
+            print(f"Error loading config file: {e}")
+    
+    # Return default config if no file found or error occurred
+    return create_default_config()
+
+
+def save_config(config, config_path):
+    """
+    Save configuration to file
+    
+    Args:
+        config (dict): Configuration dictionary
+        config_path (str): Path to save config file
+    """
+    try:
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(os.path.abspath(config_path)), exist_ok=True)
+        
+        with open(config_path, 'w') as file:
+            yaml.dump(config, file, default_flow_style=False)
+            print(f"Configuration saved to {config_path}")
+    except Exception as e:
+        print(f"Error saving config file: {e}")
     
     # List certificates command
     list_parser = subparsers.add_parser("list", help="List certificates")
@@ -344,9 +474,65 @@ def main():
     
     args = parser.parse_args()
     
+    # Handle config commands first
+    if args.command == "config":
+        if args.config_command == "create":
+            config = create_default_config()
+            save_config(config, args.path)
+            return
+        elif args.config_command == "view":
+            config = load_config(args.config)
+            print(yaml.dump(config, default_flow_style=False))
+            return
+        elif args.config_command == "add-key":
+            config_path = args.path
+            
+            # Load existing config or create new one
+            if os.path.exists(config_path):
+                config = load_config(config_path)
+            else:
+                config = create_default_config()
+            
+            # Add API key
+            config["api_key"] = args.api_key
+            save_config(config, config_path)
+            print(f"API key added to configuration")
+            return
+    
+    # Load configuration
+    config = load_config(args.config)
+    
     try:
-        client = CertWardenClient(api_key=args.api_key)
+        # Override config with command line parameters if provided
+        if args.base_url:
+            if 'api' not in config:
+                config['api'] = {}
+            config['api']['base_url'] = args.base_url
+            
+        # Create API client with config
+        client = CertWardenClient(api_key=args.api_key, config_file=args.config)
         
+        # Default output directory from config
+        output_dir = "."
+        if 'output' in config and 'directory' in config['output']:
+            output_dir = config['output']['directory']
+            # Create directory if it doesn't exist
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # Default format from config
+        default_format = "pem"
+        if 'defaults' in config and 'format' in config['defaults']:
+            default_format = config['defaults']['format']
+            
+        # Default expiry days from config
+        default_expiry_days = 30
+        if 'defaults' in config and 'expiry_alert_days' in config['defaults']:
+            default_expiry_days = config['defaults']['expiry_alert_days']
+            
+        # Handle output directory from command args if provided
+        if hasattr(args, 'output_dir') and args.output_dir != ".":
+            output_dir = args.output_dir
+            
         if args.command == "list":
             response = client.get_certificates(limit=args.limit, offset=args.offset, status=args.status)
             display_certificates(response.get("certificates", []))
@@ -362,39 +548,43 @@ def main():
             print(f"\nFound {len(response.get('certificates', []))} certificates matching '{args.query}'")
             
         elif args.command == "expiring":
-            response = client.get_expiring_certificates(days=args.days)
+            days = args.days if hasattr(args, 'days') else default_expiry_days
+            response = client.get_expiring_certificates(days=days)
             display_certificates(response.get("certificates", []))
-            print(f"\nFound {len(response.get('certificates', []))} certificates expiring in the next {args.days} days")
+            print(f"\nFound {len(response.get('certificates', []))} certificates expiring in the next {days} days")
             
         elif args.command == "combined":
-            certificate = client.get_combined_certificate(args.certificate_id, format=args.format)
+            format_type = args.format if hasattr(args, 'format') else default_format
+            certificate = client.get_combined_certificate(args.certificate_id, format=format_type)
             print(f"Retrieved combined certificate and key for ID: {args.certificate_id}")
-            save_combined_certificate(certificate, output_dir=args.output_dir)
+            save_combined_certificate(certificate, output_dir=output_dir, config=config)
             
         elif args.command == "bulk-combined":
-            response = client.get_bulk_combined_certificates(args.certificate_ids, format=args.format)
+            format_type = args.format if hasattr(args, 'format') else default_format
+            response = client.get_bulk_combined_certificates(args.certificate_ids, format=format_type)
             certificates = response.get("certificates", [])
             print(f"Retrieved {len(certificates)} combined certificates with keys")
             
             for cert in certificates:
-                save_combined_certificate(cert, output_dir=args.output_dir)
+                save_combined_certificate(cert, output_dir=output_dir, config=config)
                 
         elif args.command == "privatecertchains":
             if not args.certificate_ids and not args.all_active:
                 print("Error: Either --certificate-ids or --all-active must be specified")
                 return
                 
+            format_type = args.format if hasattr(args, 'format') else default_format
             response = client.get_private_cert_chains(
                 certificate_ids=args.certificate_ids, 
                 all_active=args.all_active,
-                format=args.format
+                format=format_type
             )
             
             certificates = response.get("certificates", [])
             print(f"Retrieved {len(certificates)} certificates with private keys and chains")
             
             for cert in certificates:
-                save_combined_certificate(cert, output_dir=args.output_dir)
+                save_combined_certificate(cert, output_dir=output_dir, config=config)
             
         else:
             parser.print_help()
