@@ -1,0 +1,16 @@
+api:
+  base_url: https://api.certwarden.com
+  headers:
+    Content-Type: application/json
+certificates: []
+defaults:
+  expiry_alert_days: 30
+  format: pem
+output:
+  directory: ./certificates
+  extensions:
+    certificate: .crt
+    chain: _chain.pem
+    combined: _combined.pem
+    private_key: .key
+  filename_template: '{common_name}_{cert_id}'
