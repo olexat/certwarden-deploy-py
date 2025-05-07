@@ -691,3 +691,16 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+import subprocess
+
+def execute_on_success_command(command):
+    try:
+        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print(f"Success command executed:\n{result.stdout.decode()}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing success command: {e.stderr.decode()}")
+
+    if "on_success" in config.get("defaults", {}):
+        execute_on_success_command(config["defaults"]["on_success"])
