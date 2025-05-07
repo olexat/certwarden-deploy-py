@@ -30,10 +30,11 @@ actions:
 
 # Certificate groups to retrieve
 certificates:
-  # Group 1: Retrieve specific certificates by ID
+  # Group 1: Retrieve specific certificates with their private keys
   production_web_servers:
     method: "individual"
     format: "pem"
+    include_key: true  # Include private keys (default)
     certificates:
       - "cert_123abc"
       - "cert_456def"
@@ -44,10 +45,12 @@ certificates:
       command: "cp {certificate} {private_key} /etc/nginx/ssl/ && systemctl reload nginx"
       run_on: "new"  # Only run for new certificates
   
-  # Group 2: Retrieve certificates by search query
+  # Group 2: Retrieve certificates without keys, then fetch keys separately
   wildcard_certificates:
     method: "search"
     format: "pem"
+    include_key: false  # Don't include private keys in initial fetch
+    fetch_keys: true    # Fetch keys separately
     query: "*.example.com"
     output:
       directory: "./certificates/wildcard"
@@ -56,10 +59,12 @@ certificates:
       command: "cp {combined} /etc/haproxy/ssl/ && systemctl reload haproxy"
       run_on: "all"  # Run for all certificates
   
-  # Group 3: Retrieve expiring certificates
+  # Group 3: Retrieve expiring certificates without private keys
   expiring_certificates:
     method: "expiring"
     format: "pem"
+    include_key: false  # Don't include private keys
+    fetch_keys: false   # Don't fetch keys separately
     days: 30
     output:
       directory: "./certificates/expiring"

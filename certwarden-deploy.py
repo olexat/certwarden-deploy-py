@@ -286,16 +286,36 @@ class CertWardenClient:
         response.raise_for_status()
         return response.json()
         
-    def get_certificates_by_config(self, certificate_config):
+    def get_private_key(self, certificate_id):
         """
-        Retrieve certificates based on configuration
+        Retrieve the private key for a certificate
         
         Args:
-            certificate_config (dict): Certificate configuration from YAML
+            certificate_id (str): The ID of the certificate
             
         Returns:
-            list: Retrieved certificates
+            dict: Private key data
         """
+        endpoint = f"{self.base_url}/v1/certificates/{certificate_id}/key"
+        response = requests.get(endpoint, headers=self.headers)
+        response.raise_for_status()
+        return response.json()
+        
+    def get_private_keys(self, certificate_ids):
+        """
+        Retrieve multiple private keys in bulk
+        
+        Args:
+            certificate_ids (list): List of certificate IDs
+            
+        Returns:
+            dict: Private keys data
+        """
+        endpoint = f"{self.base_url}/v1/certificates/keys/bulk"
+        data = {"certificate_ids": certificate_ids}
+        response = requests.post(endpoint, headers=self.headers, json=data)
+        response.raise_for_status()
+        return response.json()
         results = []
         
         # Process each certificate group from config
