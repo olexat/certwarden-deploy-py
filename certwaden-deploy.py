@@ -370,7 +370,8 @@ def create_default_config():
         "defaults": {
             "format": "pem",
             "expiry_alert_days": 30
-        }
+        },
+        "certificates": []  # Array of certificate IDs to fetch
     }
 
 
@@ -469,6 +470,11 @@ def setup_argument_parser():
     add_key_parser.add_argument("api_key", help="API key to add")
     add_key_parser.add_argument("--path", default="~/.certwarden/config.yaml", help="Path to configuration file")
     
+    # Add certificate ID to config command
+    add_cert_parser = config_subparsers.add_parser("add-cert", help="Add certificate ID to configuration")
+    add_cert_parser.add_argument("certificate_id", help="Certificate ID to add")
+    add_cert_parser.add_argument("--path", default="~/.certwarden/config.yaml", help="Path to configuration file")
+    
     # List certificates command
     list_parser = subparsers.add_parser("list", help="List certificates")
     list_parser.add_argument("--limit", type=int, default=10, help="Maximum number of certificates to return")
@@ -505,6 +511,7 @@ def setup_argument_parser():
     chains_parser = subparsers.add_parser("privatecertchains", help="Get certificates with private keys and chains")
     chains_parser.add_argument("--certificate-ids", nargs="*", help="IDs of certificates to retrieve")
     chains_parser.add_argument("--all-active", action="store_true", help="Retrieve all active certificates")
+    chains_parser.add_argument("--from-config", action="store_true", help="Use certificate IDs from config file")
     chains_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
                              help="Format of the certificates/keys")
     chains_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
@@ -547,6 +554,27 @@ def main():
             config["api_key"] = args.api_key
             save_config(config, config_path)
             print(f"API key added to configuration")
+            return
+        elif args.config_command == "add-cert":
+            config_path = args.path
+            
+            # Load existing config or create new one
+            if os.path.exists(config_path):
+                config = load_config(config_path)
+            else:
+                config = create_default_config()
+            
+            # Initialize certificates array if not present
+            if 'certificates' not in config:
+                config['certificates'] = []
+            
+            # Add certificate ID if not already in the list
+            if args.certificate_id not in config['certificates']:
+                config['certificates'].append(args.certificate_id)
+                save_config(config, config_path)
+                print(f"Certificate ID '{args.certificate_id}' added to configuration")
+            else:
+                print(f"Certificate ID '{args.certificate_id}' already in configuration")
             return
     
     # Load configuration
@@ -619,13 +647,25 @@ def main():
                 save_combined_certificate(cert, output_dir=output_dir, config=config)
                 
         elif args.command == "privatecertchains":
-            if not args.certificate_ids and not args.all_active:
-                print("Error: Either --certificate-ids or --all-active must be specified")
+            certificate_ids = args.certificate_ids
+            
+            # If --from-config flag is used, get certificate IDs from config
+            if args.from_config:
+                if 'certificates' in config and config['certificates']:
+                    certificate_ids = config['certificates']
+                    print(f"Using certificate IDs from config: {', '.join(certificate_ids)}")
+                else:
+                    print("No certificate IDs found in config file")
+                    return
+            
+            # Error if no certificates are specified in any way
+            if not certificate_ids and not args.all_active:
+                print("Error: Either --certificate-ids, --all-active, or --from-config must be specified")
                 return
                 
             format_type = args.format if hasattr(args, 'format') else default_format
             response = client.get_private_cert_chains(
-                certificate_ids=args.certificate_ids, 
+                certificate_ids=certificate_ids, 
                 all_active=args.all_active,
                 format=format_type
             )
@@ -651,4 +691,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
