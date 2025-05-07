@@ -431,6 +431,43 @@ def save_config(config, config_path):
             print(f"Configuration saved to {config_path}")
     except Exception as e:
         print(f"Error saving config file: {e}")
+
+
+def setup_argument_parser():
+    """
+    Set up command line argument parser
+    
+    Returns:
+        argparse.ArgumentParser: Configured argument parser
+    """
+    parser = argparse.ArgumentParser(
+        description="CertWarden API Client",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Global arguments
+    parser.add_argument("--api-key", help="API key for authentication")
+    parser.add_argument("--config", help="Path to configuration file")
+    parser.add_argument("--base-url", help="Base URL for the API")
+    
+    # Subcommands
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+    
+    # Config management commands
+    config_parser = subparsers.add_parser("config", help="Configuration management")
+    config_subparsers = config_parser.add_subparsers(dest="config_command", help="Config operation")
+    
+    # Create config command
+    create_config_parser = config_subparsers.add_parser("create", help="Create default configuration file")
+    create_config_parser.add_argument("--path", default="~/.certwarden/config.yaml", help="Path to save configuration file")
+    
+    # View config command
+    view_config_parser = config_subparsers.add_parser("view", help="View current configuration")
+    
+    # Add API key to config command
+    add_key_parser = config_subparsers.add_parser("add-key", help="Add API key to configuration")
+    add_key_parser.add_argument("api_key", help="API key to add")
+    add_key_parser.add_argument("--path", default="~/.certwarden/config.yaml", help="Path to configuration file")
     
     # List certificates command
     list_parser = subparsers.add_parser("list", help="List certificates")
@@ -472,7 +509,20 @@ def save_config(config, config_path):
                              help="Format of the certificates/keys")
     chains_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
     
+    return parser
+
+
+def main():
+    """
+    Main function for the CertWarden CLI
+    """
+    parser = setup_argument_parser()
     args = parser.parse_args()
+    
+    # If no command provided, show help
+    if not args.command:
+        parser.print_help()
+        return
     
     # Handle config commands first
     if args.command == "config":
