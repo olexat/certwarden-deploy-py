@@ -137,6 +137,43 @@ class CertWardenClient:
         response = requests.get(endpoint, headers=self.headers, params=params)
         response.raise_for_status()
         return response.json()
+        
+    def get_combined_certificate(self, certificate_id, format="pem"):
+        """
+        Retrieve a certificate with its private key
+        
+        Args:
+            certificate_id (str): The ID of the certificate to retrieve
+            format (str): Format of the certificate/key (pem, pkcs12, jks)
+            
+        Returns:
+            dict: Certificate data with private key
+        """
+        endpoint = f"{self.base_url}/v1/certificates/{certificate_id}/combined"
+        params = {"format": format}
+        response = requests.get(endpoint, headers=self.headers, params=params)
+        response.raise_for_status()
+        return response.json()
+    
+    def get_bulk_combined_certificates(self, certificate_ids, format="pem"):
+        """
+        Retrieve multiple certificates with their private keys
+        
+        Args:
+            certificate_ids (list): List of certificate IDs to retrieve
+            format (str): Format of the certificates/keys (pem, pkcs12, jks)
+            
+        Returns:
+            dict: Certificates data with private keys
+        """
+        endpoint = f"{self.base_url}/v1/certificates/combined/bulk"
+        data = {
+            "certificate_ids": certificate_ids,
+            "format": format
+        }
+        response = requests.post(endpoint, headers=self.headers, json=data)
+        response.raise_for_status()
+        return response.json()
 
 
 def display_certificates(certificates):
@@ -171,8 +208,67 @@ def display_certificates(certificates):
             print("Subject Alternative Names:")
             for san in cert["sans"]:
                 print(f"  - {san}")
+        
+        # Display if certificate has private key
+        if "has_private_key" in cert:
+            print(f"Has Private Key: {'Yes' if cert['has_private_key'] else 'No'}")
                 
         print(f"{'-'*50}")
+
+
+def save_combined_certificate(certificate_data, output_dir="."):
+    """
+    Save combined certificate and private key to files
+    
+    Args:
+        certificate_data (dict): Combined certificate data from API
+        output_dir (str): Directory to save the files
+    """
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        
+    cert_id = certificate_data.get("id", "unknown")
+    common_name = certificate_data.get("common_name", "unknown").replace("*", "wildcard")
+    
+    # Sanitize filename
+    safe_name = "".join(c if c.isalnum() else "_" for c in common_name)
+    base_filename = f"{safe_name}_{cert_id}"
+    
+    # Save certificate
+    if "certificate" in certificate_data:
+        cert_path = os.path.join(output_dir, f"{base_filename}.crt")
+        with open(cert_path, "w") as f:
+            f.write(certificate_data["certificate"])
+        print(f"Certificate saved to: {cert_path}")
+    
+    # Save private key
+    if "private_key" in certificate_data:
+        key_path = os.path.join(output_dir, f"{base_filename}.key")
+        with open(key_path, "w") as f:
+            f.write(certificate_data["private_key"])
+        print(f"Private key saved to: {key_path}")
+    
+    # Save full chain if available
+    if "chain" in certificate_data:
+        chain_path = os.path.join(output_dir, f"{base_filename}_chain.pem")
+        with open(chain_path, "w") as f:
+            f.write(certificate_data["chain"])
+        print(f"Certificate chain saved to: {chain_path}")
+        
+    # Save combined PEM (cert + chain + key) for convenience
+    if "certificate" in certificate_data and "private_key" in certificate_data:
+        combined = ""
+        if "chain" in certificate_data:
+            combined = certificate_data["chain"]
+        else:
+            combined = certificate_data["certificate"]
+            
+        combined += "\n" + certificate_data["private_key"]
+        
+        combined_path = os.path.join(output_dir, f"{base_filename}_combined.pem")
+        with open(combined_path, "w") as f:
+            f.write(combined)
+        print(f"Combined PEM file saved to: {combined_path}")
 
 
 def main():
@@ -200,6 +296,20 @@ def main():
     expiring_parser = subparsers.add_parser("expiring", help="Get expiring certificates")
     expiring_parser.add_argument("--days", type=int, default=30, help="Number of days to check for expiration")
     
+    # Get combined certificate (cert + key) command
+    combined_parser = subparsers.add_parser("combined", help="Get certificate with private key")
+    combined_parser.add_argument("certificate_id", help="ID of the certificate to retrieve")
+    combined_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
+                               help="Format of the certificate/key")
+    combined_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
+    
+    # Get bulk combined certificates command
+    bulk_parser = subparsers.add_parser("bulk-combined", help="Get multiple certificates with private keys")
+    bulk_parser.add_argument("certificate_ids", nargs="+", help="IDs of certificates to retrieve")
+    bulk_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
+                           help="Format of the certificates/keys")
+    bulk_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
+    
     args = parser.parse_args()
     
     try:
@@ -223,6 +333,19 @@ def main():
             response = client.get_expiring_certificates(days=args.days)
             display_certificates(response.get("certificates", []))
             print(f"\nFound {len(response.get('certificates', []))} certificates expiring in the next {args.days} days")
+            
+        elif args.command == "combined":
+            certificate = client.get_combined_certificate(args.certificate_id, format=args.format)
+            print(f"Retrieved combined certificate and key for ID: {args.certificate_id}")
+            save_combined_certificate(certificate, output_dir=args.output_dir)
+            
+        elif args.command == "bulk-combined":
+            response = client.get_bulk_combined_certificates(args.certificate_ids, format=args.format)
+            certificates = response.get("certificates", [])
+            print(f"Retrieved {len(certificates)} combined certificates with keys")
+            
+            for cert in certificates:
+                save_combined_certificate(cert, output_dir=args.output_dir)
             
         else:
             parser.print_help()
