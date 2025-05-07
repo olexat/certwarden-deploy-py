@@ -236,6 +236,11 @@ def display_certificates(certificates):
         return
         
     for cert in certificates:
+    # Per-certificate on_success hook
+        cert_on_success = cert.get("on_success") or config.get("defaults", {}).get("on_success")
+        if cert_on_success:
+            execute_on_success_command(cert_on_success)
+
         print(f"\n{'-'*50}")
         print(f"Certificate ID: {cert.get('id')}")
         print(f"Common Name: {cert.get('common_name')}")
@@ -701,6 +706,3 @@ def execute_on_success_command(command):
         print(f"Success command executed:\n{result.stdout.decode()}")
     except subprocess.CalledProcessError as e:
         print(f"Error executing success command: {e.stderr.decode()}")
-
-    if "on_success" in config.get("defaults", {}):
-        execute_on_success_command(config["defaults"]["on_success"])
