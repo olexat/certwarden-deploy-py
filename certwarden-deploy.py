@@ -427,6 +427,9 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
         certificate_data (dict): Combined certificate data from API
         output_dir (str): Directory to save the files
         config (dict): Configuration dictionary
+        
+    Returns:
+        dict: Information about saved files
     """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -438,6 +441,10 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
     filename_template = "{common_name}_{cert_id}"
     if config and 'output' in config and 'filename_template' in config['output']:
         filename_template = config['output']['filename_template']
+    
+    # Group-specific template overrides global config
+    if '_output' in certificate_data and 'filename_template' in certificate_data['_output']:
+        filename_template = certificate_data['_output']['filename_template']
     
     # Replace template variables
     filename = filename_template.format(
@@ -461,12 +468,24 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
     if config and 'output' in config and 'extensions' in config['output']:
         extensions.update(config['output']['extensions'])
     
+    # Group-specific extensions override global config
+    if '_output' in certificate_data and 'extensions' in certificate_data['_output']:
+        extensions.update(certificate_data['_output']['extensions'])
+    
+    # Track saved files
+    saved_files = {
+        'certificate_id': cert_id,
+        'common_name': common_name,
+        'files': {}
+    }
+    
     # Save certificate
     if "certificate" in certificate_data:
         cert_path = os.path.join(output_dir, f"{base_filename}{extensions['certificate']}")
         with open(cert_path, "w") as f:
             f.write(certificate_data["certificate"])
         print(f"Certificate saved to: {cert_path}")
+        saved_files['files']['certificate'] = cert_path
     
     # Save private key
     if "private_key" in certificate_data:
@@ -474,6 +493,7 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
         with open(key_path, "w") as f:
             f.write(certificate_data["private_key"])
         print(f"Private key saved to: {key_path}")
+        saved_files['files']['private_key'] = key_path
     
     # Save full chain if available
     if "chain" in certificate_data:
@@ -481,6 +501,7 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
         with open(chain_path, "w") as f:
             f.write(certificate_data["chain"])
         print(f"Certificate chain saved to: {chain_path}")
+        saved_files['files']['chain'] = chain_path
         
     # Save combined PEM (cert + chain + key) for convenience
     if "certificate" in certificate_data and "private_key" in certificate_data:
@@ -496,37 +517,77 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
         with open(combined_path, "w") as f:
             f.write(combined)
         print(f"Combined PEM file saved to: {combined_path}")
+        saved_files['files']['combined'] = combined_path
+        
+    return saved_files
 
 
-def create_default_config():
+def run_action_command(action_config, cert_info, is_new=False):
     """
-    Create a default configuration file
+    Run a command specified in the action configuration
     
+    Args:
+        action_config (dict): Action configuration from YAML
+        cert_info (dict): Certificate information including paths to saved files
+        is_new (bool): Whether this is a new certificate
+        
     Returns:
-        dict: Default configuration
+        bool: Whether the command was run successfully
     """
-    return {
-        "api": {
-            "base_url": "https://api.certwarden.com",
-            "headers": {
-                "Content-Type": "application/json"
-            }
-        },
-        "output": {
-            "directory": "./certificates",
-            "filename_template": "{common_name}_{cert_id}",
-            "extensions": {
-                "certificate": ".crt",
-                "private_key": ".key",
-                "chain": "_chain.pem",
-                "combined": "_combined.pem"
-            }
-        },
-        "defaults": {
-            "format": "pem",
-            "expiry_alert_days": 30
-        }
-    }
+    # Check if we should run the command
+    run_on = action_config.get('run_on', 'new')
+    if run_on == 'new' and not is_new:
+        print(f"  Skipping action command (only runs on new certificates)")
+        return False
+        
+    if run_on == 'all' or (run_on == 'new' and is_new):
+        command = action_config.get('command')
+        if not command:
+            print(f"  No command specified in action config")
+            return False
+            
+        # Replace placeholders in command
+        formatted_command = command
+        
+        # Replace certificate placeholders
+        formatted_command = formatted_command.replace("{cert_id}", cert_info.get('certificate_id', ''))
+        formatted_command = formatted_command.replace("{common_name}", cert_info.get('common_name', ''))
+        
+        # Replace file path placeholders
+        for file_type, file_path in cert_info.get('files', {}).items():
+            placeholder = f"{{{file_type}}}"
+            if placeholder in formatted_command:
+                formatted_command = formatted_command.replace(placeholder, file_path)
+        
+        # Run the command
+        try:
+            print(f"  Running action command: {formatted_command}")
+            import subprocess
+            result = subprocess.run(
+                formatted_command, 
+                shell=True, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            # Check if command was successful
+            if result.returncode == 0:
+                print(f"  Command executed successfully")
+                if result.stdout:
+                    print(f"  Output: {result.stdout}")
+                return True
+            else:
+                print(f"  Command failed with exit code {result.returncode}")
+                if result.stderr:
+                    print(f"  Error: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            print(f"  Error executing command: {e}")
+            return False
+    
+    return False
 
 
 def load_config(config_path=None):
@@ -759,3 +820,4 @@ def save_config(config, config_path):
 
 if __name__ == "__main__":
     main()
+

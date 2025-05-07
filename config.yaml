@@ -1,4 +1,4 @@
-# CertWarden API Client Configuration
+# CertWarden API Client Configuration with Actions
 
 # Your API key for authentication
 api_key: "your_api_key_here"
@@ -24,6 +24,10 @@ defaults:
   format: "pem"
   expiry_alert_days: 30
 
+# Actions global setting
+actions:
+  enabled: true
+
 # Certificate groups to retrieve
 certificates:
   # Group 1: Retrieve specific certificates by ID
@@ -35,6 +39,10 @@ certificates:
       - "cert_456def"
     output:
       directory: "./certificates/production"
+    # Action to run after certificate retrieval
+    action:
+      command: "cp {certificate} {private_key} /etc/nginx/ssl/ && systemctl reload nginx"
+      run_on: "new"  # Only run for new certificates
   
   # Group 2: Retrieve certificates by search query
   wildcard_certificates:
@@ -43,6 +51,10 @@ certificates:
     query: "*.example.com"
     output:
       directory: "./certificates/wildcard"
+    # Action to run after certificate retrieval
+    action:
+      command: "cp {combined} /etc/haproxy/ssl/ && systemctl reload haproxy"
+      run_on: "all"  # Run for all certificates
   
   # Group 3: Retrieve expiring certificates
   expiring_certificates:
@@ -51,26 +63,8 @@ certificates:
     days: 30
     output:
       directory: "./certificates/expiring"
-  
-  # Group 4: Retrieve all active certificates
-  all_active:
-    method: "all_active"
-    format: "pem"
-    output:
-      directory: "./certificates/{group}"
-  
-  # Group 5: Certificates for specific servers with custom output
-  nginx_servers:
-    method: "search"
-    format: "pem"
-    query: "nginx"
-    output:
-      directory: "./certificates/nginx"
-      # Use nginx-specific naming convention
-      filename_template: "{common_name}.combined"
-      extensions:
-        certificate: ".crt"
-        private_key: ".key"
-        chain: ".chain"
-        combined: ".fullchain"
+    # Action to run after certificate retrieval
+    action:
+      command: "echo 'Certificate {common_name} ({cert_id}) expiring soon' | mail -s 'Certificate Expiration Warning' admin@example.com"
+      run_on: "all"
 
