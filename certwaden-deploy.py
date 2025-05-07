@@ -174,6 +174,30 @@ class CertWardenClient:
         response = requests.post(endpoint, headers=self.headers, json=data)
         response.raise_for_status()
         return response.json()
+        
+    def get_private_cert_chains(self, certificate_ids=None, all_active=False, format="pem"):
+        """
+        Retrieve certificates with their private keys and certificate chains
+        
+        Args:
+            certificate_ids (list, optional): List of certificate IDs to retrieve
+            all_active (bool): Whether to retrieve all active certificates
+            format (str): Format of the certificates/keys (pem, pkcs12, jks)
+            
+        Returns:
+            dict: Certificates data with private keys and chains
+        """
+        endpoint = f"{self.base_url}/v1/certificates/privatecertchains"
+        
+        data = {"format": format}
+        if certificate_ids:
+            data["certificate_ids"] = certificate_ids
+        if all_active:
+            data["all_active"] = True
+            
+        response = requests.post(endpoint, headers=self.headers, json=data)
+        response.raise_for_status()
+        return response.json()
 
 
 def display_certificates(certificates):
@@ -310,6 +334,14 @@ def main():
                            help="Format of the certificates/keys")
     bulk_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
     
+    # Get private certificate chains command
+    chains_parser = subparsers.add_parser("privatecertchains", help="Get certificates with private keys and chains")
+    chains_parser.add_argument("--certificate-ids", nargs="*", help="IDs of certificates to retrieve")
+    chains_parser.add_argument("--all-active", action="store_true", help="Retrieve all active certificates")
+    chains_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
+                             help="Format of the certificates/keys")
+    chains_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
+    
     args = parser.parse_args()
     
     try:
@@ -343,6 +375,23 @@ def main():
             response = client.get_bulk_combined_certificates(args.certificate_ids, format=args.format)
             certificates = response.get("certificates", [])
             print(f"Retrieved {len(certificates)} combined certificates with keys")
+            
+            for cert in certificates:
+                save_combined_certificate(cert, output_dir=args.output_dir)
+                
+        elif args.command == "privatecertchains":
+            if not args.certificate_ids and not args.all_active:
+                print("Error: Either --certificate-ids or --all-active must be specified")
+                return
+                
+            response = client.get_private_cert_chains(
+                certificate_ids=args.certificate_ids, 
+                all_active=args.all_active,
+                format=args.format
+            )
+            
+            certificates = response.get("certificates", [])
+            print(f"Retrieved {len(certificates)} certificates with private keys and chains")
             
             for cert in certificates:
                 save_combined_certificate(cert, output_dir=args.output_dir)
