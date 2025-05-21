@@ -953,9 +953,6 @@ def main():
             print(f"Retrieved private key for certificate ID: {args.certificate_id}")
             
             # Save to file
-            output_dir = args.output_dir if hasattr(args, 'output_dir') else "."
-            os.makedirs(output_dir, exist_ok=True)
-            
             # Determine filename
             if hasattr(args, 'output_file') and args.output_file:
                 output_file = os.path.join(output_dir, args.output_file)
