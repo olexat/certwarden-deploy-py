@@ -138,74 +138,6 @@ class CertWardenClient:
         response = requests.get(endpoint, headers=headers)
         response.raise_for_status()
         return response.text
-    
-    def search_certificates(self, query):
-        """
-        Search for certificates matching the query
-        
-        Args:
-            query (str): Search query
-            
-        Returns:
-            str: Matching certificates in PEM format
-        """
-        endpoint = f"{self.base_url}/v1/download/certificates/search"
-        params = {"q": query}
-        headers = self._get_api_headers(operation_type='cert')
-        response = requests.get(endpoint, headers=headers, params=params)
-        response.raise_for_status()
-        return response.text
-    
-    def create_certificate(self, certificate_data):
-        """
-        Create a new certificate
-        
-        Args:
-            certificate_data (dict): Certificate information
-            
-        Returns:
-            str: Created certificate data
-        """
-        endpoint = f"{self.base_url}/v1/download/certificates"
-        headers = self._get_api_headers(operation_type='cert')
-        response = requests.post(endpoint, headers=headers, json=certificate_data)
-        response.raise_for_status()
-        return response.text
-    
-    def revoke_certificate(self, certificate_id, reason="unspecified"):
-        """
-        Revoke a certificate
-        
-        Args:
-            certificate_id (str): The ID of the certificate to revoke
-            reason (str): Reason for revocation
-            
-        Returns:
-            str: Response data
-        """
-        endpoint = f"{self.base_url}/v1/download/certificates/{certificate_id}/revoke"
-        headers = self._get_api_headers(certificate_id=certificate_id, operation_type='cert')
-        data = {"reason": reason}
-        response = requests.post(endpoint, headers=headers, json=data)
-        response.raise_for_status()
-        return response.text
-    
-    def get_expiring_certificates(self, days=30):
-        """
-        Get certificates expiring within the specified number of days
-        
-        Args:
-            days (int): Number of days to check for expiration
-            
-        Returns:
-            str: Expiring certificates in PEM format
-        """
-        endpoint = f"{self.base_url}/v1/download/certificates/expiring"
-        params = {"days": days}
-        headers = self._get_api_headers(operation_type='cert')
-        response = requests.get(endpoint, headers=headers, params=params)
-        response.raise_for_status()
-        return response.text
         
     def get_combined_certificate(self, certificate_id, format="pem"):
         """
@@ -407,76 +339,6 @@ class CertWardenClient:
                         except Exception as e:
                             print(f"  Error retrieving certificate {cert_id}: {e}")
                             
-            elif method == 'search':
-                # Get certificates by search query
-                if 'query' in group_config:
-                    try:
-                        query = group_config['query']
-                        print(f"  Searching for certificates with query: {query}...")
-                        certificates_data = self.search_certificates(query)
-                        
-                        # Since the response format is not JSON, we need to parse PEM format
-                        # For simplicity, we'll treat the entire response as one certificate
-                        
-                        if certificates_data:
-                            print(f"  Found certificates matching query")
-                            
-                            certificate_data = {
-                                'id': query,  # Use query as ID
-                                'common_name': query,  # Use query as common_name
-                                'certificate': certificates_data
-                            }
-                            
-                            if include_key:
-                                # If keys are needed, attempt to get them (this is a simplification)
-                                try:
-                                    key_data = self.get_private_key(query)
-                                    certificate_data['private_key'] = key_data
-                                    certificate_data['combined'] = certificates_data + "\n" + key_data
-                                except Exception as e:
-                                    print(f"  Error retrieving key for {query}: {e}")
-                            
-                            certificate_data['_group'] = group_name
-                            certificate_data['_output'] = group_config.get('output', {})
-                            results.append(certificate_data)
-                                
-                    except Exception as e:
-                        print(f"  Error searching for certificates: {e}")
-                        
-            elif method == 'expiring':
-                # Get certificates that are expiring
-                days = group_config.get('days', 30)
-                try:
-                    print(f"  Retrieving certificates expiring in {days} days...")
-                    certificates_data = self.get_expiring_certificates(days=days)
-                    
-                    # Parse the PEM data (simplified approach)
-                    if certificates_data:
-                        print(f"  Found expiring certificates")
-                        
-                        certificate_data = {
-                            'id': f"expiring_{days}days",
-                            'common_name': f"expiring_{days}days",
-                            'certificate': certificates_data
-                        }
-                        
-                        if include_key:
-                            # This is a simplification - in a real-world scenario, 
-                            # you'd need to determine the actual cert IDs
-                            try:
-                                key_data = "PRIVATE KEY PLACEHOLDER"  # Simplified
-                                certificate_data['private_key'] = key_data
-                                certificate_data['combined'] = certificates_data + "\n" + key_data
-                            except Exception as e:
-                                print(f"  Error retrieving keys: {e}")
-                        
-                        certificate_data['_group'] = group_name
-                        certificate_data['_output'] = group_config.get('output', {})
-                        results.append(certificate_data)
-                            
-                except Exception as e:
-                    print(f"  Error retrieving expiring certificates: {e}")
-                    
             elif method == 'all_active':
                 # Get all active certificates
                 try:
@@ -806,6 +668,150 @@ def save_config(config, config_path):
         print(f"Error saving config file: {e}")
 
 
+def process_certificates_from_config(config_path=None):
+    """
+    Process certificates from configuration
+    
+    Args:
+        config_path (str): Path to configuration file
+        
+    Returns:
+        dict: Results of certificate processing
+    """
+    # Load configuration
+    config = load_config(config_path)
+    
+    if 'certificates' not in config:
+        print("No certificate configuration found in config file")
+        return
+    
+    # Create client
+    try:
+        client = CertWardenClient(config_file=config_path)
+    except Exception as e:
+        print(f"Error creating CertWarden client: {e}")
+        return
+    
+    # Check if actions are enabled
+    actions_enabled = False
+    
+    if 'actions' in config and config['actions'].get('enabled', False):
+        actions_enabled = True
+        print("\nActions are enabled - commands will be run after certificate processing")
+    
+    # Get certificates
+    certificates = client.get_certificates_by_config(config['certificates'])
+    print(f"\nRetrieved {len(certificates)} certificates in total")
+    
+    # Track new and unchanged certificates
+    new_certificates = []
+    unchanged_certificates = []
+    
+    # Process each certificate
+    for cert in certificates:
+        # Get certificate info
+        cert_id = cert.get('id', 'unknown')
+        common_name = cert.get('common_name', 'unknown')
+        
+        # Process and save certificate
+        is_new = True  # By default, assume certificate is new
+        
+        # Determine output directory
+        output_dir = config.get('output', {}).get('directory', './certificates')
+        
+        # Override with group-specific output directory if available
+        if '_output' in cert and 'directory' in cert['_output']:
+            output_dir = cert['_output']['directory']
+            
+        # Handle path templates
+        if '{group}' in output_dir:
+            output_dir = output_dir.replace('{group}', cert.get('_group', 'default'))
+            
+        # Make sure directory exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate base filename to check if files exist
+        filename_template = config.get('output', {}).get('filename_template', '{common_name}_{cert_id}')
+        if '_output' in cert and 'filename_template' in cert['_output']:
+            filename_template = cert['_output']['filename_template']
+            
+        filename = filename_template.format(
+            common_name=common_name.replace("*", "wildcard"),
+            cert_id=cert_id,
+            date=datetime.now().strftime("%Y%m%d")
+        )
+        
+        safe_name = "".join(c if c.isalnum() or c in ['_', '-', '.'] else "_" for c in filename)
+        
+        # Get extensions
+        extensions = {
+            'certificate': '.crt',
+            'private_key': '.key',
+            'chain': '_chain.pem',
+            'combined': '_combined.pem'
+        }
+        
+        if 'output' in config and 'extensions' in config['output']:
+            extensions.update(config['output']['extensions'])
+            
+        if '_output' in cert and 'extensions' in cert['_output']:
+            extensions.update(cert['_output']['extensions'])
+            
+        # Check if files exist
+        existing_files = {}
+        for file_type, ext in extensions.items():
+            file_path = os.path.join(output_dir, f"{safe_name}{ext}")
+            if os.path.exists(file_path):
+                existing_files[file_type] = file_path
+                
+        # Determine if this is a new certificate
+        if 'certificate' in existing_files and 'private_key' in existing_files:
+            # Certificate files already exist
+            is_new = False
+            
+        # Save certificate
+        print(f"\nSaving certificate: {common_name} ({cert_id})")
+        saved_info = save_combined_certificate(cert, output_dir=output_dir, config=config)
+        
+        # Add to the appropriate list
+        if is_new:
+            print(f"  Status: New certificate")
+            new_certificates.append(saved_info)
+        else:
+            # For now, treat all existing certs as unchanged
+            print(f"  Status: Certificate already exists")
+            unchanged_certificates.append(saved_info)
+        
+        # Run actions if enabled
+        if actions_enabled:
+            # Get the certificate group
+            group_name = cert.get('_group')
+            
+            # Check if there are actions for this group
+            if group_name and 'certificates' in config and group_name in config['certificates']:
+                group_config = config['certificates'][group_name]
+                
+                # Check if this group has an action defined
+                if 'action' in group_config:
+                    action_config = group_config['action']
+                    print(f"  Running action for group: {group_name}")
+                    run_action_command(action_config, saved_info, is_new=is_new)
+            
+    # Print summary
+    print("\n" + "="*50)
+    print("Certificate Processing Summary")
+    print("="*50)
+    print(f"New certificates: {len(new_certificates)}")
+    print(f"Unchanged certificates: {len(unchanged_certificates)}")
+    total = len(new_certificates) + len(unchanged_certificates)
+    print(f"Total certificates processed: {total}")
+    
+    return {
+        'new': new_certificates,
+        'unchanged': unchanged_certificates
+    }
+
+
 def main():
     """Main function to run the script"""
     parser = argparse.ArgumentParser(description="CertWarden API Client")
@@ -844,14 +850,6 @@ def main():
     # Get certificate command
     get_parser = subparsers.add_parser("get", help="Get a specific certificate")
     get_parser.add_argument("certificate_id", help="ID of the certificate to retrieve")
-    
-    # Search certificates command
-    search_parser = subparsers.add_parser("search", help="Search for certificates")
-    search_parser.add_argument("query", help="Search query")
-    
-    # Get expiring certificates command
-    expiring_parser = subparsers.add_parser("expiring", help="Get expiring certificates")
-    expiring_parser.add_argument("--days", type=int, default=30, help="Number of days to check for expiration")
     
     # Get combined certificate (cert + key) command
     combined_parser = subparsers.add_parser("combined", help="Get certificate with private key")
@@ -932,11 +930,6 @@ def main():
         if 'defaults' in config and 'format' in config['defaults']:
             default_format = config['defaults']['format']
             
-        # Default expiry days from config
-        default_expiry_days = 30
-        if 'defaults' in config and 'expiry_alert_days' in config['defaults']:
-            default_expiry_days = config['defaults']['expiry_alert_days']
-            
         # Handle output directory from command args if provided
         if hasattr(args, 'output_dir') and args.output_dir != ".":
             output_dir = args.output_dir
@@ -948,15 +941,6 @@ def main():
         elif args.command == "get":
             certificate = client.get_certificate(args.certificate_id)
             print(certificate)
-            
-        elif args.command == "search":
-            response = client.search_certificates(args.query)
-            print(response)
-            
-        elif args.command == "expiring":
-            days = args.days if hasattr(args, 'days') else default_expiry_days
-            response = client.get_expiring_certificates(days=days)
-            print(response)
             
         elif args.command == "combined":
             format_type = args.format if hasattr(args, 'format') else default_format
@@ -1029,4 +1013,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
