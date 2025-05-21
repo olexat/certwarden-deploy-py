@@ -242,7 +242,7 @@ class CertWardenClient:
         Returns:
             str: Private key data in PEM format
         """
-        endpoint = f"{self.base_url}/v1/download/certificates/{certificate_id}/key"
+        endpoint = f"{self.base_url}/v1/download/privatekeys/{certificate_id}"
         headers = self._get_api_headers(certificate_id=certificate_id, operation_type='key')
         response = requests.get(endpoint, headers=headers)
         response.raise_for_status()
@@ -851,6 +851,12 @@ def main():
     get_parser = subparsers.add_parser("get", help="Get a specific certificate")
     get_parser.add_argument("certificate_id", help="ID of the certificate to retrieve")
     
+    # Get private key command
+    key_parser = subparsers.add_parser("key", help="Get the private key for a certificate")
+    key_parser.add_argument("certificate_id", help="ID of the certificate whose key to retrieve")
+    key_parser.add_argument("--output-dir", default=".", help="Directory to save the private key file")
+    key_parser.add_argument("--output-file", help="Name of the output file (defaults to certificate_id.key)")
+    
     # Get combined certificate (cert + key) command
     combined_parser = subparsers.add_parser("combined", help="Get certificate with private key")
     combined_parser.add_argument("certificate_id", help="ID of the certificate to retrieve")
@@ -941,6 +947,25 @@ def main():
         elif args.command == "get":
             certificate = client.get_certificate(args.certificate_id)
             print(certificate)
+            
+        elif args.command == "key":
+            private_key = client.get_private_key(args.certificate_id)
+            print(f"Retrieved private key for certificate ID: {args.certificate_id}")
+            
+            # Save to file
+            output_dir = args.output_dir if hasattr(args, 'output_dir') else "."
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Determine filename
+            if hasattr(args, 'output_file') and args.output_file:
+                output_file = os.path.join(output_dir, args.output_file)
+            else:
+                output_file = os.path.join(output_dir, f"{args.certificate_id}.key")
+                
+            # Write key to file
+            with open(output_file, "w") as f:
+                f.write(private_key)
+            print(f"Private key saved to: {output_file}")
             
         elif args.command == "combined":
             format_type = args.format if hasattr(args, 'format') else default_format
