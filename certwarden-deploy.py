@@ -850,6 +850,8 @@ def main():
     # Get certificate command
     get_parser = subparsers.add_parser("get", help="Get a specific certificate")
     get_parser.add_argument("certificate_id", help="ID of the certificate to retrieve")
+    get_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate file")
+    get_parser.add_argument("--output-file", help="Name of the output file (defaults to certificate_id.crt)")
     
     # Get private key command
     key_parser = subparsers.add_parser("key", help="Get the private key for a certificate")
@@ -946,13 +948,25 @@ def main():
             
         elif args.command == "get":
             certificate = client.get_certificate(args.certificate_id)
-            print(certificate)
+            print(f"Retrieved certificate for ID: {args.certificate_id}")
+            
+            # Save to file
+            # Determine filename
+            if hasattr(args, 'output_file') and args.output_file:
+                output_file = os.path.join(output_dir, args.output_file)
+            else:
+                output_file = os.path.join(output_dir, f"{args.certificate_id}.crt")
+                
+            # Write certificate to file
+            with open(output_file, "w") as f:
+                f.write(certificate)
+            print(f"Certificate saved to: {output_file}")
             
         elif args.command == "key":
             private_key = client.get_private_key(args.certificate_id)
             print(f"Retrieved private key for certificate ID: {args.certificate_id}")
             
-            # Save to file
+            # Save to file            
             # Determine filename
             if hasattr(args, 'output_file') and args.output_file:
                 output_file = os.path.join(output_dir, args.output_file)
