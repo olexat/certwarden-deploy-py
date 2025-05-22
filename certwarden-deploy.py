@@ -137,28 +137,24 @@ class CertWardenClient:
         else:
             return response.content
         
-    def get_private_cert_chains(self, certificate_ids=None, all_active=False, format="pem"):
+    def get_private_cert_chain(self, certificate_id, format="pem"):
         """
-        Retrieve certificates with their private keys and certificate chains
+        Retrieve a certificate with its private key and certificate chain
         
         Args:
-            certificate_ids (list, optional): List of certificate IDs to retrieve
-            all_active (bool): Whether to retrieve all active certificates
+            certificate_id (str): ID of certificate to retrieve
             format (str): Format of the certificates/keys (pem, pkcs12, jks)
             
         Returns:
-            str or bytes: Certificate chains data, either as text (PEM format) or binary
+            str or bytes: Certificate chain data with private key, either as text (PEM format) or binary
         """
         endpoint = f"{self.base_url}/v1/download/certificates/privatecertchains"
         
-        data = {"format": format}
-        if certificate_ids:
-            data["certificate_ids"] = certificate_ids
-        if all_active:
-            data["all_active"] = True
+        data = {
+            "certificate_ids": [certificate_id],
+            "format": format
+        }
         
-        # Since this could be a bulk operation, we'll use the first certificate's API key if provided
-        certificate_id = certificate_ids[0] if certificate_ids else None
         headers = self._get_api_headers(certificate_id=certificate_id, operation_type='combined')
         
         # Set headers for POST request
@@ -250,37 +246,9 @@ class CertWardenClient:
                             print(f"  Error retrieving certificate {cert_id}: {e}")
                             
             elif method == 'all_active':
-                # Get all active certificates
-                try:
-                    print(f"  Retrieving all active certificates...")
-                    
-                    if include_key:
-                        # Get all active certificates with keys
-                        certificates_data = self.get_private_cert_chains(all_active=True, format=format_type)
-                    else:
-                        # All active method not supported without using get_certificates
-                        print(f"  Error: all_active method requires private keys to be enabled")
-                        continue
-                    
-                    if certificates_data:
-                        print(f"  Found active certificates")
-                        
-                        certificate_data = {
-                            'id': "all_active",
-                            'common_name': "all_active",
-                            'certificate': certificates_data
-                        }
-                        
-                        if include_key:
-                            certificate_data['private_key'] = certificates_data
-                            certificate_data['combined'] = certificates_data
-                        
-                        certificate_data['_group'] = group_name
-                        certificate_data['_output'] = group_config.get('output', {})
-                        results.append(certificate_data)
-                        
-                except Exception as e:
-                    print(f"  Error retrieving all active certificates: {e}")
+                # all_active method is no longer supported since we removed bulk operations
+                print(f"  Error: all_active method is not supported")
+                continue
             
             # Group-specific certificates retrieved, now check if we need to fetch separate keys
             group_certificates = [c for c in results if c.get('_group') == group_name]
@@ -754,13 +722,12 @@ def main():
                                help="Format of the certificate/key")
     combined_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
     
-    # Get private certificate chains command
-    chains_parser = subparsers.add_parser("privatecertchains", help="Get certificates with private keys and chains")
-    chains_parser.add_argument("--certificate-ids", nargs="*", help="IDs of certificates to retrieve")
-    chains_parser.add_argument("--all-active", action="store_true", help="Retrieve all active certificates")
-    chains_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
-                             help="Format of the certificates/keys")
-    chains_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
+    # Get private certificate chain command
+    chain_parser = subparsers.add_parser("privatecertchain", help="Get certificate with private key and chain")
+    chain_parser.add_argument("certificate_id", help="ID of certificate to retrieve")
+    chain_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
+                             help="Format of the certificate/key")
+    chain_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
     
     args = parser.parse_args()
     
@@ -872,26 +839,26 @@ def main():
                     f.write(certificate)
             print(f"Saved to: {output_file}")
             
-        elif args.command == "privatecertchains":
-            if not args.certificate_ids and not args.all_active:
-                print("Error: Either --certificate-ids or --all-active must be specified")
-                return
-                
+        elif args.command == "privatecertchain":
             format_type = args.format if hasattr(args, 'format') else default_format
-            response = client.get_private_cert_chains(
-                certificate_ids=args.certificate_ids, 
-                all_active=args.all_active,
+            response = client.get_private_cert_chain(
+                certificate_id=args.certificate_id,
                 format=format_type
             )
             
-            print(f"Retrieved certificates with private keys and chains")
+            print(f"Retrieved certificate with private key and chain for ID: {args.certificate_id}")
             
             # Save to file
-            output_file = os.path.join(output_dir, f"private_cert_chains.{format_type}")
+            filename = f"{args.certificate_id}_chain"
+            output_dir = args.output_dir
+            os.makedirs(output_dir, exist_ok=True)
+            
             if format_type == "pem":
+                output_file = os.path.join(output_dir, f"{filename}.pem")
                 with open(output_file, "w") as f:
                     f.write(response)
             else:
+                output_file = os.path.join(output_dir, f"{filename}.{format_type}")
                 with open(output_file, "wb") as f:
                     f.write(response)
             print(f"Saved to: {output_file}")
