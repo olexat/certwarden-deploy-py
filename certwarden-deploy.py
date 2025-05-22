@@ -189,37 +189,6 @@ class CertWardenClient:
         response.raise_for_status()
         return response.text
         
-    def get_private_keys(self, certificate_ids):
-        """
-        Retrieve multiple private keys in bulk
-        
-        Args:
-            certificate_ids (list): List of certificate IDs
-            
-        Returns:
-            str or bytes: Private keys data, either as text (PEM format) or binary
-        """
-        endpoint = f"{self.base_url}/v1/download/certificates/keys/bulk"
-        data = {"certificate_ids": certificate_ids}
-        
-        # Since this is a bulk operation, we'll use the first certificate's key API key as a fallback
-        certificate_id = certificate_ids[0] if certificate_ids else None
-        headers = self._get_api_headers(certificate_id=certificate_id, operation_type='key')
-        
-        # Set headers for POST request
-        headers["Content-Type"] = "application/json"
-        
-        response = requests.post(endpoint, headers=headers, json=data)
-        response.raise_for_status()
-        
-        # The response is likely PEM format for keys, which is text
-        try:
-            # Try to decode as text first
-            return response.text
-        except UnicodeDecodeError:
-            # If it's binary data, return the raw content
-            return response.content
-    
     def get_certificates_by_config(self, certificate_config):
         """
         Retrieve certificates based on configuration
@@ -317,25 +286,8 @@ class CertWardenClient:
             group_certificates = [c for c in results if c.get('_group') == group_name]
             
             if not include_key and group_config.get('fetch_keys', False) and group_certificates:
-                # Collect certificate IDs from this group
-                cert_ids = [cert.get('id') for cert in group_certificates if cert.get('id')]
-                
-                if cert_ids:
-                    try:
-                        print(f"  Fetching private keys for {len(cert_ids)} certificates...")
-                        keys_data = self.get_private_keys(cert_ids)
-                        
-                        # In a real-world scenario, you'd need to parse the PEM blocks
-                        # For simplicity, we'll add the same key data to all certificates
-                        
-                        for cert in group_certificates:
-                            cert['private_key'] = keys_data
-                            if 'certificate' in cert:
-                                cert['combined'] = cert['certificate'] + "\n" + keys_data
-                            print(f"  Added private key to certificate {cert.get('id')}")
-                                
-                    except Exception as e:
-                        print(f"  Error fetching private keys: {e}")
+                # Note: bulk private key fetching is not supported by the API
+                print(f"  Warning: fetch_keys option is not supported - bulk private key retrieval unavailable")
         
         return results
 
@@ -876,7 +828,7 @@ def main():
             print(f"Retrieved certificate for ID: {args.certificate_id}")
             
             # Save to file
-            # Determine filename            
+            # Determine filename
             if hasattr(args, 'output_file') and args.output_file:
                 output_file = os.path.join(output_dir, args.output_file)
             else:
