@@ -45,34 +45,4 @@ certificates:
     action:
       command: "cp {certificate} {private_key} /etc/nginx/ssl/ && systemctl reload nginx"
       run_on: "new"  # Only run for new certificates
-  
-  # Group 2: Wildcard certificates
-  wildcard_certificates:
-    method: "search"
-    format: "pem"
-    # Certificate-specific API keys
-    cert_secret: "examplekey_notvalid_cert789"  # API key for certificate operations
-    key_secret: "examplekey_notvalid_key101"    # API key for private key operations
-    query: "*.example.com"
-    output:
-      directory: "./certificates/wildcard"
-    # Action to run after certificate retrieval
-    action:
-      command: "cp {combined} /etc/haproxy/ssl/ && systemctl reload haproxy"
-      run_on: "all"  # Run for all certificates
-  
-  # Group 3: Expiring certificates
-  expiring_certificates:
-    method: "expiring"
-    format: "pem"
-    # Certificate-specific API keys
-    cert_secret: "examplekey_notvalid_cert202"  # API key for certificate operations
-    key_secret: "examplekey_notvalid_key303"    # API key for private key operations
-    days: 30
-    output:
-      directory: "./certificates/expiring"
-    # Action to run after certificate retrieval
-    action:
-      command: "echo 'Certificate {common_name} ({cert_id}) expiring soon' | mail -s 'Certificate Expiration Warning' admin@example.com"
-      run_on: "all"
 
