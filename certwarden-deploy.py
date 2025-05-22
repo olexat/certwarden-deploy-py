@@ -97,32 +97,6 @@ class CertWardenClient:
             
         return headers
         
-    def get_certificates(self, limit=100, offset=0, status=None):
-        """
-        Retrieve certificates from the API
-        
-        Args:
-            limit (int): Maximum number of certificates to return
-            offset (int): Number of certificates to skip
-            status (str, optional): Filter by certificate status
-            
-        Returns:
-            str: Certificates data in PEM format
-        """
-        endpoint = f"{self.base_url}/v1/download/certificates"
-        params = {
-            "limit": limit,
-            "offset": offset
-        }
-        
-        if status:
-            params["status"] = status
-            
-        headers = self._get_api_headers(operation_type='cert')
-        response = requests.get(endpoint, headers=headers, params=params)
-        response.raise_for_status()
-        return response.text
-    
     def get_certificate(self, certificate_id):
         """
         Retrieve a specific certificate by ID
@@ -160,39 +134,6 @@ class CertWardenClient:
         if format.lower() == "pem":
             return response.text
         # For binary formats (pkcs12, jks), return content
-        else:
-            return response.content
-    
-    def get_bulk_combined_certificates(self, certificate_ids, format="pem"):
-        """
-        Retrieve multiple certificates with their private keys
-        
-        Args:
-            certificate_ids (list): List of certificate IDs to retrieve
-            format (str): Format of the certificates/keys (pem, pkcs12, jks)
-            
-        Returns:
-            str or bytes: Certificate data with private keys
-        """
-        endpoint = f"{self.base_url}/v1/download/certificates/combined/bulk"
-        data = {
-            "certificate_ids": certificate_ids,
-            "format": format
-        }
-        
-        # Since this is a bulk operation, we'll use the first certificate's API key as a fallback
-        certificate_id = certificate_ids[0] if certificate_ids else None
-        headers = self._get_api_headers(certificate_id=certificate_id, operation_type='combined')
-        
-        # Set headers for POST request
-        headers["Content-Type"] = "application/json"
-        
-        response = requests.post(endpoint, headers=headers, json=data)
-        response.raise_for_status()
-        
-        # The response format depends on the requested format
-        if format.lower() == "pem":
-            return response.text
         else:
             return response.content
         
@@ -348,8 +289,9 @@ class CertWardenClient:
                         # Get all active certificates with keys
                         certificates_data = self.get_private_cert_chains(all_active=True, format=format_type)
                     else:
-                        # Get all active certificates without keys
-                        certificates_data = self.get_certificates(status="active")
+                        # All active method not supported without using get_certificates
+                        print(f"  Error: all_active method requires private keys to be enabled")
+                        continue
                     
                     if certificates_data:
                         print(f"  Found active certificates")
@@ -841,12 +783,6 @@ def main():
     process_parser = subparsers.add_parser("process", help="Process certificates from config")
     process_parser.add_argument("--config", help="Path to configuration file")
     
-    # List certificates command
-    list_parser = subparsers.add_parser("list", help="List certificates")
-    list_parser.add_argument("--limit", type=int, default=10, help="Maximum number of certificates to return")
-    list_parser.add_argument("--offset", type=int, default=0, help="Number of certificates to skip")
-    list_parser.add_argument("--status", help="Filter by certificate status")
-    
     # Get certificate command
     get_parser = subparsers.add_parser("get", help="Get a specific certificate")
     get_parser.add_argument("certificate_id", help="ID of the certificate to retrieve")
@@ -865,13 +801,6 @@ def main():
     combined_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
                                help="Format of the certificate/key")
     combined_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
-    
-    # Get bulk combined certificates command
-    bulk_parser = subparsers.add_parser("bulk-combined", help="Get multiple certificates with private keys")
-    bulk_parser.add_argument("certificate_ids", nargs="+", help="IDs of certificates to retrieve")
-    bulk_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
-                           help="Format of the certificates/keys")
-    bulk_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
     
     # Get private certificate chains command
     chains_parser = subparsers.add_parser("privatecertchains", help="Get certificates with private keys and chains")
@@ -942,16 +871,12 @@ def main():
         if hasattr(args, 'output_dir') and args.output_dir != ".":
             output_dir = args.output_dir
             
-        if args.command == "list":
-            response = client.get_certificates(limit=args.limit, offset=args.offset, status=args.status)
-            print(response)
-            
-        elif args.command == "get":
+        if args.command == "get":
             certificate = client.get_certificate(args.certificate_id)
             print(f"Retrieved certificate for ID: {args.certificate_id}")
             
             # Save to file
-            # Determine filename
+            # Determine filename            
             if hasattr(args, 'output_file') and args.output_file:
                 output_file = os.path.join(output_dir, args.output_file)
             else:
@@ -966,7 +891,7 @@ def main():
             private_key = client.get_private_key(args.certificate_id)
             print(f"Retrieved private key for certificate ID: {args.certificate_id}")
             
-            # Save to file            
+            # Save to file
             # Determine filename
             if hasattr(args, 'output_file') and args.output_file:
                 output_file = os.path.join(output_dir, args.output_file)
@@ -995,21 +920,6 @@ def main():
                     f.write(certificate)
             print(f"Saved to: {output_file}")
             
-        elif args.command == "bulk-combined":
-            format_type = args.format if hasattr(args, 'format') else default_format
-            response = client.get_bulk_combined_certificates(args.certificate_ids, format=format_type)
-            print(f"Retrieved combined certificates with keys")
-            
-            # Save to file
-            output_file = os.path.join(output_dir, f"bulk_combined.{format_type}")
-            if format_type == "pem":
-                with open(output_file, "w") as f:
-                    f.write(response)
-            else:
-                with open(output_file, "wb") as f:
-                    f.write(response)
-            print(f"Saved to: {output_file}")
-                
         elif args.command == "privatecertchains":
             if not args.certificate_ids and not args.all_active:
                 print("Error: Either --certificate-ids or --all-active must be specified")
