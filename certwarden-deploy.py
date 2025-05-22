@@ -124,9 +124,10 @@ class CertWardenClient:
         Returns:
             str or bytes: Combined certificate and key data in the specified format
         """
-        endpoint = f"{self.base_url}/v1/download/certificates/{certificate_id}/combined"
+        endpoint = f"{self.base_url}/v1/download/privatecerts/{certificate_id}"
         params = {"format": format}
         headers = self._get_api_headers(certificate_id=certificate_id, operation_type='combined')
+        print(headers)
         response = requests.get(endpoint, headers=headers, params=params)
         response.raise_for_status()
         
