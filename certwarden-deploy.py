@@ -127,7 +127,6 @@ class CertWardenClient:
         endpoint = f"{self.base_url}/v1/download/privatecerts/{certificate_id}"
         params = {"format": format}
         headers = self._get_api_headers(certificate_id=certificate_id, operation_type='combined')
-        print(headers)
         response = requests.get(endpoint, headers=headers, params=params)
         response.raise_for_status()
         
@@ -149,19 +148,10 @@ class CertWardenClient:
         Returns:
             str or bytes: Certificate chain data with private key, either as text (PEM format) or binary
         """
-        endpoint = f"{self.base_url}/v1/download/certificates/privatecertchains"
-        
-        data = {
-            "certificate_ids": [certificate_id],
-            "format": format
-        }
-        
+        endpoint = f"{self.base_url}/v1/download/privatecertchains/{certificate_id}"
+        params = {"format": format}
         headers = self._get_api_headers(certificate_id=certificate_id, operation_type='combined')
-        
-        # Set headers for POST request
-        headers["Content-Type"] = "application/json"
-        
-        response = requests.post(endpoint, headers=headers, json=data)
+        response = requests.get(endpoint, headers=headers, params=params)
         response.raise_for_status()
         
         # The response format depends on the requested format
@@ -851,9 +841,6 @@ def main():
             
             # Save to file
             filename = f"{args.certificate_id}_chain"
-            output_dir = args.output_dir
-            os.makedirs(output_dir, exist_ok=True)
-            
             if format_type == "pem":
                 output_file = os.path.join(output_dir, f"{filename}.pem")
                 with open(output_file, "w") as f:
