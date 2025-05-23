@@ -210,8 +210,21 @@ class CertWardenClient:
                             certificate_data = {}
                             
                             # Determine how to retrieve the certificate
-                            if include_key:
-                                # Get combined certificate + key
+                            retrieval_method = group_config.get('retrieval_method', 'combined')
+                            
+                            if retrieval_method == 'chain' or retrieval_method == 'privatecertchain':
+                                # Get certificate with private key and chain
+                                chain_data = self.get_private_cert_chain(cert_id, format=format_type)
+                                certificate_data = {
+                                    'id': cert_id,
+                                    'common_name': cert_id,  # Use cert_id as common_name for now
+                                    'certificate': chain_data,
+                                    'private_key': chain_data,  # The private key is included in the chain data
+                                    'chain': chain_data,
+                                    'combined': chain_data
+                                }
+                            elif include_key:
+                                # Get combined certificate + key (default behavior)
                                 combined_data = self.get_combined_certificate(cert_id, format=format_type)
                                 certificate_data = {
                                     'id': cert_id,
@@ -577,6 +590,7 @@ def create_default_config():
         "certificates": {
             "example_group": {
                 "method": "individual",
+                "retrieval_method": "combined",  # Options: combined, chain/privatecertchain, individual
                 "cert_secret": "example_cert_api_key",  # Replace with your actual key
                 "key_secret": "example_key_api_key",    # Replace with your actual key
                 "certificates": ["cert_id_here"],
