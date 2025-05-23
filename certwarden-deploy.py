@@ -12,6 +12,7 @@ import os
 import yaml
 import sys
 import subprocess
+import hashlib
 from datetime import datetime
 import argparse
 from pathlib import Path
@@ -251,9 +252,58 @@ class CertWardenClient:
         return results
 
 
+def calculate_content_hash(content):
+    """
+    Calculate SHA-256 hash of content for comparison
+    
+    Args:
+        content (str or bytes): Content to hash
+        
+    Returns:
+        str: SHA-256 hash as hex string
+    """
+    if isinstance(content, str):
+        content = content.encode('utf-8')
+    return hashlib.sha256(content).hexdigest()
+
+
+def file_content_changed(file_path, new_content):
+    """
+    Check if file content has changed by comparing hashes
+    
+    Args:
+        file_path (str): Path to the file to check
+        new_content (str or bytes): New content to compare
+        
+    Returns:
+        bool: True if content has changed or file doesn't exist, False if unchanged
+    """
+    if not os.path.exists(file_path):
+        return True  # File doesn't exist, so it's "changed"
+    
+    try:
+        # Read existing file content
+        if isinstance(new_content, bytes):
+            with open(file_path, 'rb') as f:
+                existing_content = f.read()
+        else:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                existing_content = f.read()
+        
+        # Compare hashes
+        existing_hash = calculate_content_hash(existing_content)
+        new_hash = calculate_content_hash(new_content)
+        
+        return existing_hash != new_hash
+        
+    except Exception as e:
+        print(f"  Warning: Could not read existing file {file_path}: {e}")
+        return True  # Assume changed if we can't read the file
+
+
 def save_combined_certificate(certificate_data, output_dir=".", config=None):
     """
-    Save combined certificate and private key to files
+    Save combined certificate and private key to files only if content has changed
     
     Args:
         certificate_data (dict): Combined certificate data from API
@@ -261,7 +311,7 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
         config (dict): Configuration dictionary
         
     Returns:
-        dict: Information about saved files
+        dict: Information about saved files including whether they were updated
     """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -304,49 +354,83 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
     if '_output' in certificate_data and 'extensions' in certificate_data['_output']:
         extensions.update(certificate_data['_output']['extensions'])
     
-    # Track saved files
+    # Track saved files and changes
     saved_files = {
         'certificate_id': cert_id,
         'common_name': common_name,
-        'files': {}
+        'files': {},
+        'files_changed': {},
+        'any_changed': False
     }
     
-    # Save certificate
+    # Save certificate if content has changed
     if "certificate" in certificate_data:
         cert_path = os.path.join(output_dir, f"{base_filename}{extensions['certificate']}")
-        with open(cert_path, "w") as f:
-            f.write(certificate_data["certificate"])
-        print(f"Certificate saved to: {cert_path}")
+        content_changed = file_content_changed(cert_path, certificate_data["certificate"])
+        
+        if content_changed:
+            with open(cert_path, "w") as f:
+                f.write(certificate_data["certificate"])
+            print(f"Certificate updated: {cert_path}")
+            saved_files['any_changed'] = True
+        else:
+            print(f"Certificate unchanged: {cert_path}")
+            
         saved_files['files']['certificate'] = cert_path
+        saved_files['files_changed']['certificate'] = content_changed
     
-    # Save private key
+    # Save private key if content has changed
     if "private_key" in certificate_data:
         key_path = os.path.join(output_dir, f"{base_filename}{extensions['private_key']}")
-        with open(key_path, "w") as f:
-            f.write(certificate_data["private_key"])
-        print(f"Private key saved to: {key_path}")
+        content_changed = file_content_changed(key_path, certificate_data["private_key"])
+        
+        if content_changed:
+            with open(key_path, "w") as f:
+                f.write(certificate_data["private_key"])
+            print(f"Private key updated: {key_path}")
+            saved_files['any_changed'] = True
+        else:
+            print(f"Private key unchanged: {key_path}")
+            
         saved_files['files']['private_key'] = key_path
+        saved_files['files_changed']['private_key'] = content_changed
     
-    # Save full chain if available
+    # Save full chain if available and content has changed
     if "chain" in certificate_data:
         chain_path = os.path.join(output_dir, f"{base_filename}{extensions['chain']}")
-        with open(chain_path, "w") as f:
-            f.write(certificate_data["chain"])
-        print(f"Certificate chain saved to: {chain_path}")
-        saved_files['files']['chain'] = chain_path
+        content_changed = file_content_changed(chain_path, certificate_data["chain"])
         
-    # Save combined PEM (cert + chain + key) for convenience
+        if content_changed:
+            with open(chain_path, "w") as f:
+                f.write(certificate_data["chain"])
+            print(f"Certificate chain updated: {chain_path}")
+            saved_files['any_changed'] = True
+        else:
+            print(f"Certificate chain unchanged: {chain_path}")
+            
+        saved_files['files']['chain'] = chain_path
+        saved_files['files_changed']['chain'] = content_changed
+        
+    # Save combined PEM (cert + chain + key) for convenience if content has changed
     if "combined" in certificate_data:
         combined_path = os.path.join(output_dir, f"{base_filename}{extensions['combined']}")
-        with open(combined_path, "w") as f:
-            f.write(certificate_data["combined"])
-        print(f"Combined PEM file saved to: {combined_path}")
+        content_changed = file_content_changed(combined_path, certificate_data["combined"])
+        
+        if content_changed:
+            with open(combined_path, "w") as f:
+                f.write(certificate_data["combined"])
+            print(f"Combined PEM file updated: {combined_path}")
+            saved_files['any_changed'] = True
+        else:
+            print(f"Combined PEM file unchanged: {combined_path}")
+            
         saved_files['files']['combined'] = combined_path
+        saved_files['files_changed']['combined'] = content_changed
         
     return saved_files
 
 
-def run_action_command(action_config, cert_info, is_new=False):
+def run_action_command(action_config, cert_info, is_new=False, files_changed=False):
     """
     Run a command specified in the action configuration
     
@@ -354,17 +438,38 @@ def run_action_command(action_config, cert_info, is_new=False):
         action_config (dict): Action configuration from YAML
         cert_info (dict): Certificate information including paths to saved files
         is_new (bool): Whether this is a new certificate
+        files_changed (bool): Whether any files have changed
         
     Returns:
         bool: Whether the command was run successfully
     """
     # Check if we should run the command
     run_on = action_config.get('run_on', 'new')
-    if run_on == 'new' and not is_new:
-        print(f"  Skipping action command (only runs on new certificates)")
+    
+    # Determine if we should run based on the run_on setting
+    should_run = False
+    if run_on == 'new' and is_new:
+        should_run = True
+        print(f"  Running action command (new certificate)")
+    elif run_on == 'changed' and files_changed:
+        should_run = True
+        print(f"  Running action command (files changed)")
+    elif run_on == 'all':
+        should_run = True
+        print(f"  Running action command (always run)")
+    elif run_on == 'new_or_changed' and (is_new or files_changed):
+        should_run = True
+        print(f"  Running action command (new or changed)")
+    else:
+        if run_on == 'new':
+            print(f"  Skipping action command (only runs on new certificates)")
+        elif run_on == 'changed':
+            print(f"  Skipping action command (only runs when files change)")
+        elif run_on == 'new_or_changed':
+            print(f"  Skipping action command (only runs on new certificates or when files change)")
         return False
         
-    if run_on == 'all' or (run_on == 'new' and is_new):
+    if should_run:
         command = action_config.get('command')
         if not command:
             print(f"  No command specified in action config")
@@ -455,7 +560,7 @@ def create_default_config():
                 },
                 "action": {
                     "command": "echo 'Certificate {common_name} ({cert_id}) processed' && cp {certificate} {private_key} /etc/ssl/",
-                    "run_on": "new"
+                    "run_on": "changed"  # Options: new, changed, new_or_changed, all
                 }
             }
         }
@@ -556,8 +661,9 @@ def process_certificates_from_config(config_path=None):
     certificates = client.get_certificates_by_config(config['certificates'])
     print(f"\nRetrieved {len(certificates)} certificates in total")
     
-    # Track new and unchanged certificates
+    # Track new, changed, and unchanged certificates
     new_certificates = []
+    changed_certificates = []
     unchanged_certificates = []
     
     # Process each certificate
@@ -565,9 +671,6 @@ def process_certificates_from_config(config_path=None):
         # Get certificate info
         cert_id = cert.get('id', 'unknown')
         common_name = cert.get('common_name', 'unknown')
-        
-        # Process and save certificate
-        is_new = True  # By default, assume certificate is new
         
         # Determine output directory
         output_dir = config.get('output', {}).get('directory', './certificates')
@@ -610,29 +713,26 @@ def process_certificates_from_config(config_path=None):
         if '_output' in cert and 'extensions' in cert['_output']:
             extensions.update(cert['_output']['extensions'])
             
-        # Check if files exist
-        existing_files = {}
-        for file_type, ext in extensions.items():
-            file_path = os.path.join(output_dir, f"{safe_name}{ext}")
-            if os.path.exists(file_path):
-                existing_files[file_type] = file_path
-                
-        # Determine if this is a new certificate
-        if 'certificate' in existing_files and 'private_key' in existing_files:
-            # Certificate files already exist
-            is_new = False
-            
-        # Save certificate
-        print(f"\nSaving certificate: {common_name} ({cert_id})")
+        # Check if files exist to determine if this is a new certificate
+        cert_file_exists = os.path.exists(os.path.join(output_dir, f"{safe_name}{extensions['certificate']}"))
+        key_file_exists = os.path.exists(os.path.join(output_dir, f"{safe_name}{extensions['private_key']}"))
+        is_new = not (cert_file_exists and key_file_exists)
+        
+        # Save certificate and check for changes
+        print(f"\nProcessing certificate: {common_name} ({cert_id})")
         saved_info = save_combined_certificate(cert, output_dir=output_dir, config=config)
         
-        # Add to the appropriate list
+        # Determine certificate status
+        files_changed = saved_info.get('any_changed', False)
+        
         if is_new:
             print(f"  Status: New certificate")
             new_certificates.append(saved_info)
+        elif files_changed:
+            print(f"  Status: Certificate content changed")
+            changed_certificates.append(saved_info)
         else:
-            # For now, treat all existing certs as unchanged
-            print(f"  Status: Certificate already exists")
+            print(f"  Status: Certificate unchanged")
             unchanged_certificates.append(saved_info)
         
         # Run actions if enabled
@@ -648,19 +748,21 @@ def process_certificates_from_config(config_path=None):
                 if 'action' in group_config:
                     action_config = group_config['action']
                     print(f"  Running action for group: {group_name}")
-                    run_action_command(action_config, saved_info, is_new=is_new)
+                    run_action_command(action_config, saved_info, is_new=is_new, files_changed=files_changed)
             
     # Print summary
     print("\n" + "="*50)
     print("Certificate Processing Summary")
     print("="*50)
     print(f"New certificates: {len(new_certificates)}")
+    print(f"Changed certificates: {len(changed_certificates)}")
     print(f"Unchanged certificates: {len(unchanged_certificates)}")
-    total = len(new_certificates) + len(unchanged_certificates)
+    total = len(new_certificates) + len(changed_certificates) + len(unchanged_certificates)
     print(f"Total certificates processed: {total}")
     
     return {
         'new': new_certificates,
+        'changed': changed_certificates,
         'unchanged': unchanged_certificates
     }
 
@@ -792,10 +894,13 @@ def main():
             else:
                 output_file = os.path.join(output_dir, f"{args.certificate_id}.crt")
                 
-            # Write certificate to file
-            with open(output_file, "w") as f:
-                f.write(certificate)
-            print(f"Certificate saved to: {output_file}")
+            # Check if content has changed before writing
+            if file_content_changed(output_file, certificate):
+                with open(output_file, "w") as f:
+                    f.write(certificate)
+                print(f"Certificate updated: {output_file}")
+            else:
+                print(f"Certificate unchanged: {output_file}")
             
         elif args.command == "key":
             private_key = client.get_private_key(args.certificate_id)
@@ -808,10 +913,13 @@ def main():
             else:
                 output_file = os.path.join(output_dir, f"{args.certificate_id}.key")
                 
-            # Write key to file
-            with open(output_file, "w") as f:
-                f.write(private_key)
-            print(f"Private key saved to: {output_file}")
+            # Check if content has changed before writing
+            if file_content_changed(output_file, private_key):
+                with open(output_file, "w") as f:
+                    f.write(private_key)
+                print(f"Private key updated: {output_file}")
+            else:
+                print(f"Private key unchanged: {output_file}")
             
         elif args.command == "combined":
             format_type = args.format if hasattr(args, 'format') else default_format
@@ -822,13 +930,20 @@ def main():
             filename = f"{args.certificate_id}"
             if format_type == "pem":
                 output_file = os.path.join(output_dir, f"{filename}.pem")
-                with open(output_file, "w") as f:
-                    f.write(certificate)
+                if file_content_changed(output_file, certificate):
+                    with open(output_file, "w") as f:
+                        f.write(certificate)
+                    print(f"Combined certificate updated: {output_file}")
+                else:
+                    print(f"Combined certificate unchanged: {output_file}")
             else:
                 output_file = os.path.join(output_dir, f"{filename}.{format_type}")
-                with open(output_file, "wb") as f:
-                    f.write(certificate)
-            print(f"Saved to: {output_file}")
+                if file_content_changed(output_file, certificate):
+                    with open(output_file, "wb") as f:
+                        f.write(certificate)
+                    print(f"Combined certificate updated: {output_file}")
+                else:
+                    print(f"Combined certificate unchanged: {output_file}")
             
         elif args.command == "privatecertchain":
             format_type = args.format if hasattr(args, 'format') else default_format
@@ -843,13 +958,20 @@ def main():
             filename = f"{args.certificate_id}_chain"
             if format_type == "pem":
                 output_file = os.path.join(output_dir, f"{filename}.pem")
-                with open(output_file, "w") as f:
-                    f.write(response)
+                if file_content_changed(output_file, response):
+                    with open(output_file, "w") as f:
+                        f.write(response)
+                    print(f"Certificate chain updated: {output_file}")
+                else:
+                    print(f"Certificate chain unchanged: {output_file}")
             else:
                 output_file = os.path.join(output_dir, f"{filename}.{format_type}")
-                with open(output_file, "wb") as f:
-                    f.write(response)
-            print(f"Saved to: {output_file}")
+                if file_content_changed(output_file, response):
+                    with open(output_file, "wb") as f:
+                        f.write(response)
+                    print(f"Certificate chain updated: {output_file}")
+                else:
+                    print(f"Certificate chain unchanged: {output_file}")
             
         else:
             parser.print_help()
