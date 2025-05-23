@@ -672,16 +672,10 @@ def process_certificates_from_config(config_path=None):
         cert_id = cert.get('id', 'unknown')
         common_name = cert.get('common_name', 'unknown')
         
-        # Determine output directory
-        output_dir = config.get('output', {}).get('directory', './certificates')
-        
-        # Override with group-specific output directory if available
-        if '_output' in cert and 'directory' in cert['_output']:
-            output_dir = cert['_output']['directory']
-            
-        # Handle path templates
-        if '{group}' in output_dir:
-            output_dir = output_dir.replace('{group}', cert.get('_group', 'default'))
+        # Determine output directory using same logic as individual commands
+        output_dir = "."
+        if 'output' in config and 'directory' in config['output']:
+            output_dir = config['output']['directory']
             
         # Make sure directory exists
         os.makedirs(output_dir, exist_ok=True)
@@ -853,7 +847,7 @@ def main():
         process_certificates_from_config(args.config)
         return
     
-    # Load configuration
+    # Load configuration for other commands
     config = load_config(args.config)
     
     try:
