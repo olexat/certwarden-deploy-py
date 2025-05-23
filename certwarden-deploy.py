@@ -794,7 +794,6 @@ def main():
     
     # Process certificates from config
     process_parser = subparsers.add_parser("process", help="Process certificates from config")
-    process_parser.add_argument("--config", help="Path to configuration file")
     
     # Get certificate command
     get_parser = subparsers.add_parser("get", help="Get a specific certificate")
