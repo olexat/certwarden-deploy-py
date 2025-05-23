@@ -301,6 +301,43 @@ def file_content_changed(file_path, new_content):
         return True  # Assume changed if we can't read the file
 
 
+def generate_filename(cert_id, common_name=None, config=None, cert_output_config=None):
+    """
+    Generate filename using template from configuration
+    
+    Args:
+        cert_id (str): Certificate ID
+        common_name (str): Common name (defaults to cert_id if not provided)
+        config (dict): Global configuration dictionary
+        cert_output_config (dict): Certificate-specific output configuration
+        
+    Returns:
+        str: Sanitized filename
+    """
+    if common_name is None:
+        common_name = cert_id
+        
+    # Use filename template from config if available
+    filename_template = "{common_name}_{cert_id}"
+    if config and 'output' in config and 'filename_template' in config['output']:
+        filename_template = config['output']['filename_template']
+    
+    # Certificate-specific template overrides global config
+    if cert_output_config and 'filename_template' in cert_output_config:
+        filename_template = cert_output_config['filename_template']
+    
+    # Replace template variables
+    filename = filename_template.format(
+        common_name=common_name.replace("*", "wildcard"),
+        cert_id=cert_id,
+        date=datetime.now().strftime("%Y%m%d")
+    )
+    
+    # Sanitize filename
+    safe_name = "".join(c if c.isalnum() or c in ['_', '-', '.'] else "_" for c in filename)
+    return safe_name
+
+
 def save_combined_certificate(certificate_data, output_dir=".", config=None):
     """
     Save combined certificate and private key to files only if content has changed
@@ -317,27 +354,15 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
         os.makedirs(output_dir)
         
     cert_id = certificate_data.get("id", "unknown")
-    common_name = certificate_data.get("common_name", "unknown").replace("*", "wildcard")
+    common_name = certificate_data.get("common_name", "unknown")
     
-    # Use filename template from config if available
-    filename_template = "{common_name}_{cert_id}"
-    if config and 'output' in config and 'filename_template' in config['output']:
-        filename_template = config['output']['filename_template']
-    
-    # Group-specific template overrides global config
-    if '_output' in certificate_data and 'filename_template' in certificate_data['_output']:
-        filename_template = certificate_data['_output']['filename_template']
-    
-    # Replace template variables
-    filename = filename_template.format(
-        common_name=common_name,
+    # Generate filename using template
+    base_filename = generate_filename(
         cert_id=cert_id,
-        date=datetime.now().strftime("%Y%m%d")
+        common_name=common_name,
+        config=config,
+        cert_output_config=certificate_data.get('_output', {})
     )
-    
-    # Sanitize filename
-    safe_name = "".join(c if c.isalnum() or c in ['_', '-', '.'] else "_" for c in filename)
-    base_filename = safe_name
     
     # Get file extensions from config if available
     extensions = {
@@ -680,19 +705,6 @@ def process_certificates_from_config(config_path=None):
         # Make sure directory exists
         os.makedirs(output_dir, exist_ok=True)
         
-        # Generate base filename to check if files exist
-        filename_template = config.get('output', {}).get('filename_template', '{common_name}_{cert_id}')
-        if '_output' in cert and 'filename_template' in cert['_output']:
-            filename_template = cert['_output']['filename_template']
-            
-        filename = filename_template.format(
-            common_name=common_name.replace("*", "wildcard"),
-            cert_id=cert_id,
-            date=datetime.now().strftime("%Y%m%d")
-        )
-        
-        safe_name = "".join(c if c.isalnum() or c in ['_', '-', '.'] else "_" for c in filename)
-        
         # Get extensions
         extensions = {
             'certificate': '.crt',
@@ -708,8 +720,15 @@ def process_certificates_from_config(config_path=None):
             extensions.update(cert['_output']['extensions'])
             
         # Check if files exist to determine if this is a new certificate
-        cert_file_exists = os.path.exists(os.path.join(output_dir, f"{safe_name}{extensions['certificate']}"))
-        key_file_exists = os.path.exists(os.path.join(output_dir, f"{safe_name}{extensions['private_key']}"))
+        base_filename = generate_filename(
+            cert_id=cert_id,
+            common_name=common_name,
+            config=config,
+            cert_output_config=cert.get('_output', {})
+        )
+        
+        cert_file_exists = os.path.exists(os.path.join(output_dir, f"{base_filename}{extensions['certificate']}"))
+        key_file_exists = os.path.exists(os.path.join(output_dir, f"{base_filename}{extensions['private_key']}"))
         is_new = not (cert_file_exists and key_file_exists)
         
         # Save certificate and check for changes
@@ -880,12 +899,27 @@ def main():
             certificate = client.get_certificate(args.certificate_id)
             print(f"Retrieved certificate for ID: {args.certificate_id}")
             
-            # Save to file
+            # Generate filename using template
+            base_filename = generate_filename(
+                cert_id=args.certificate_id,
+                config=config
+            )
+            
+            # Get extensions from config
+            extensions = {
+                'certificate': '.crt',
+                'private_key': '.key',
+                'chain': '_chain.pem',
+                'combined': '_combined.pem'
+            }
+            if 'output' in config and 'extensions' in config['output']:
+                extensions.update(config['output']['extensions'])
+            
             # Determine filename
             if hasattr(args, 'output_file') and args.output_file:
                 output_file = os.path.join(output_dir, args.output_file)
             else:
-                output_file = os.path.join(output_dir, f"{args.certificate_id}.crt")
+                output_file = os.path.join(output_dir, f"{base_filename}{extensions['certificate']}")
                 
             # Check if content has changed before writing
             if file_content_changed(output_file, certificate):
@@ -899,12 +933,27 @@ def main():
             private_key = client.get_private_key(args.certificate_id)
             print(f"Retrieved private key for certificate ID: {args.certificate_id}")
             
-            # Save to file
+            # Generate filename using template
+            base_filename = generate_filename(
+                cert_id=args.certificate_id,
+                config=config
+            )
+            
+            # Get extensions from config
+            extensions = {
+                'certificate': '.crt',
+                'private_key': '.key',
+                'chain': '_chain.pem',
+                'combined': '_combined.pem'
+            }
+            if 'output' in config and 'extensions' in config['output']:
+                extensions.update(config['output']['extensions'])
+            
             # Determine filename
             if hasattr(args, 'output_file') and args.output_file:
                 output_file = os.path.join(output_dir, args.output_file)
             else:
-                output_file = os.path.join(output_dir, f"{args.certificate_id}.key")
+                output_file = os.path.join(output_dir, f"{base_filename}{extensions['private_key']}")
                 
             # Check if content has changed before writing
             if file_content_changed(output_file, private_key):
@@ -919,10 +968,25 @@ def main():
             certificate = client.get_combined_certificate(args.certificate_id, format=format_type)
             print(f"Retrieved combined certificate and key for ID: {args.certificate_id}")
             
+            # Generate filename using template
+            base_filename = generate_filename(
+                cert_id=args.certificate_id,
+                config=config
+            )
+            
+            # Get extensions from config
+            extensions = {
+                'certificate': '.crt',
+                'private_key': '.key',
+                'chain': '_chain.pem',
+                'combined': '_combined.pem'
+            }
+            if 'output' in config and 'extensions' in config['output']:
+                extensions.update(config['output']['extensions'])
+            
             # Save to file
-            filename = f"{args.certificate_id}"
             if format_type == "pem":
-                output_file = os.path.join(output_dir, f"{filename}.pem")
+                output_file = os.path.join(output_dir, f"{base_filename}{extensions['combined']}")
                 if file_content_changed(output_file, certificate):
                     with open(output_file, "w") as f:
                         f.write(certificate)
@@ -930,7 +994,7 @@ def main():
                 else:
                     print(f"Combined certificate unchanged: {output_file}")
             else:
-                output_file = os.path.join(output_dir, f"{filename}.{format_type}")
+                output_file = os.path.join(output_dir, f"{base_filename}.{format_type}")
                 if file_content_changed(output_file, certificate):
                     with open(output_file, "wb") as f:
                         f.write(certificate)
@@ -947,10 +1011,25 @@ def main():
             
             print(f"Retrieved certificate with private key and chain for ID: {args.certificate_id}")
             
+            # Generate filename using template
+            base_filename = generate_filename(
+                cert_id=args.certificate_id,
+                config=config
+            )
+            
+            # Get extensions from config
+            extensions = {
+                'certificate': '.crt',
+                'private_key': '.key',
+                'chain': '_chain.pem',
+                'combined': '_combined.pem'
+            }
+            if 'output' in config and 'extensions' in config['output']:
+                extensions.update(config['output']['extensions'])
+            
             # Save to file
-            filename = f"{args.certificate_id}_chain"
             if format_type == "pem":
-                output_file = os.path.join(output_dir, f"{filename}.pem")
+                output_file = os.path.join(output_dir, f"{base_filename}{extensions['chain']}")
                 if file_content_changed(output_file, response):
                     with open(output_file, "w") as f:
                         f.write(response)
@@ -958,7 +1037,7 @@ def main():
                 else:
                     print(f"Certificate chain unchanged: {output_file}")
             else:
-                output_file = os.path.join(output_dir, f"{filename}.{format_type}")
+                output_file = os.path.join(output_dir, f"{base_filename}.{format_type}")
                 if file_content_changed(output_file, response):
                     with open(output_file, "wb") as f:
                         f.write(response)
