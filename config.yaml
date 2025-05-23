@@ -44,5 +44,5 @@ certificates:
     # Action to run after certificate retrieval
     action:
       command: "cp {certificate} {private_key} /etc/nginx/ssl/ && systemctl reload nginx"
-      run_on: "new"  # Only run for new certificates
+      run_on: "new_or_changed"  # Only run for new or changed certificates
 
