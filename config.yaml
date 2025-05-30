@@ -15,7 +15,7 @@ output:
   extensions:
     certificate: ".crt"
     private_key: ".key"
-    chain: "_chain.pem"
+    privatecertchain: "_privatecertchain.pem"
     combined: "_combined.pem"
 
 # Default options
@@ -33,7 +33,7 @@ certificates:
   production_web_servers:
     method: "individual"
     format: "pem"
-    retrieval_method: "combined"  # combined, chain/privatecertchain, individual
+    retrieval_method: "privatecert"  # privatecert, privatecertchain, individual
     # Certificate-specific API keys
     cert_secret: "examplekey_notvalid_cert123"  # API key for certificate operations
     key_secret: "examplekey_notvalid_key456"    # API key for private key operations

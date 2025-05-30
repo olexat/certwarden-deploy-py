@@ -210,20 +210,20 @@ class CertWardenClient:
                             certificate_data = {}
                             
                             # Determine how to retrieve the certificate
-                            retrieval_method = group_config.get('retrieval_method', 'combined')
+                            retrieval_method = group_config.get('retrieval_method', 'privatecert')
                             
-                            if retrieval_method == 'chain' or retrieval_method == 'privatecertchain':
-                                # Get certificate with private key and chain
-                                chain_data = self.get_private_cert_chain(cert_id, format=format_type)
+                            if retrieval_method == 'privatecertchain':
+                                # Get certificate with private key and privatecertchain
+                                privatecertchain_data = self.get_private_cert_chain(cert_id, format=format_type)
                                 certificate_data = {
                                     'id': cert_id,
                                     'common_name': cert_id,  # Use cert_id as common_name for now
-                                    'certificate': chain_data,
-                                    'private_key': chain_data,  # The private key is included in the chain data
-                                    'chain': chain_data,
-                                    'combined': chain_data
+                                    'certificate': privatecertchain_data,
+                                    'private_key': privatecertchain_data,  # The private key is included in the privatecertchain data
+                                    'chain': privatecertchain_data,
+                                    'combined': privatecertchain_data
                                 }
-                            elif include_key:
+                            elif retrieval_method == 'privatecert' or include_key:
                                 # Get combined certificate + key (default behavior)
                                 combined_data = self.get_combined_certificate(cert_id, format=format_type)
                                 certificate_data = {
@@ -381,7 +381,7 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
     extensions = {
         'certificate': '.crt',
         'private_key': '.key',
-        'chain': '_chain.pem',
+        'privatecertchain': '_privatecertchain.pem',
         'combined': '_combined.pem'
     }
     
@@ -433,21 +433,21 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
         saved_files['files']['private_key'] = key_path
         saved_files['files_changed']['private_key'] = content_changed
     
-    # Save full chain if available and content has changed
+    # Save full privatecertchain if available and content has changed
     if "chain" in certificate_data:
-        chain_path = os.path.join(output_dir, f"{base_filename}{extensions['chain']}")
-        content_changed = file_content_changed(chain_path, certificate_data["chain"])
+        privatecertchain_path = os.path.join(output_dir, f"{base_filename}{extensions['privatecertchain']}")
+        content_changed = file_content_changed(privatecertchain_path, certificate_data["chain"])
         
         if content_changed:
-            with open(chain_path, "w") as f:
+            with open(privatecertchain_path, "w") as f:
                 f.write(certificate_data["chain"])
-            print(f"Certificate chain updated: {chain_path}")
+            print(f"Certificate privatecertchain updated: {privatecertchain_path}")
             saved_files['any_changed'] = True
         else:
-            print(f"Certificate chain unchanged: {chain_path}")
+            print(f"Certificate privatecertchain unchanged: {privatecertchain_path}")
             
-        saved_files['files']['chain'] = chain_path
-        saved_files['files_changed']['chain'] = content_changed
+        saved_files['files']['privatecertchain'] = privatecertchain_path
+        saved_files['files_changed']['privatecertchain'] = content_changed
         
     # Save combined PEM (cert + chain + key) for convenience if content has changed
     if "combined" in certificate_data:
@@ -576,7 +576,7 @@ def create_default_config():
             "extensions": {
                 "certificate": ".crt",
                 "private_key": ".key",
-                "chain": "_chain.pem",
+                "privatecertchain": "_privatecertchain.pem",
                 "combined": "_combined.pem"
             }
         },
@@ -590,7 +590,7 @@ def create_default_config():
         "certificates": {
             "example_group": {
                 "method": "individual",
-                "retrieval_method": "combined",  # Options: combined, chain/privatecertchain, individual
+                "retrieval_method": "privatecert",  # Options: privatecert, privatecertchain, individual
                 "cert_secret": "example_cert_api_key",  # Replace with your actual key
                 "key_secret": "example_key_api_key",    # Replace with your actual key
                 "certificates": ["cert_id_here"],
@@ -723,7 +723,7 @@ def process_certificates_from_config(config_path=None):
         extensions = {
             'certificate': '.crt',
             'private_key': '.key',
-            'chain': '_chain.pem',
+            'privatecertchain': '_privatecertchain.pem',
             'combined': '_combined.pem'
         }
         
@@ -923,7 +923,7 @@ def main():
             extensions = {
                 'certificate': '.crt',
                 'private_key': '.key',
-                'chain': '_chain.pem',
+                'privatecertchain': '_privatecertchain.pem',
                 'combined': '_combined.pem'
             }
             if 'output' in config and 'extensions' in config['output']:
@@ -957,7 +957,7 @@ def main():
             extensions = {
                 'certificate': '.crt',
                 'private_key': '.key',
-                'chain': '_chain.pem',
+                'privatecertchain': '_privatecertchain.pem',
                 'combined': '_combined.pem'
             }
             if 'output' in config and 'extensions' in config['output']:
@@ -992,7 +992,7 @@ def main():
             extensions = {
                 'certificate': '.crt',
                 'private_key': '.key',
-                'chain': '_chain.pem',
+                'privatecertchain': '_privatecertchain.pem',
                 'combined': '_combined.pem'
             }
             if 'output' in config and 'extensions' in config['output']:
@@ -1043,21 +1043,21 @@ def main():
             
             # Save to file
             if format_type == "pem":
-                output_file = os.path.join(output_dir, f"{base_filename}{extensions['chain']}")
+                output_file = os.path.join(output_dir, f"{base_filename}{extensions['privatecertchain']}")
                 if file_content_changed(output_file, response):
                     with open(output_file, "w") as f:
                         f.write(response)
-                    print(f"Certificate chain updated: {output_file}")
+                    print(f"Certificate privatecertchain updated: {output_file}")
                 else:
-                    print(f"Certificate chain unchanged: {output_file}")
+                    print(f"Certificate privatecertchain unchanged: {output_file}")
             else:
                 output_file = os.path.join(output_dir, f"{base_filename}.{format_type}")
                 if file_content_changed(output_file, response):
                     with open(output_file, "wb") as f:
                         f.write(response)
-                    print(f"Certificate chain updated: {output_file}")
+                    print(f"Certificate privatecertchain updated: {output_file}")
                 else:
-                    print(f"Certificate chain unchanged: {output_file}")
+                    print(f"Certificate privatecertchain unchanged: {output_file}")
             
         else:
             parser.print_help()
@@ -1074,4 +1074,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
