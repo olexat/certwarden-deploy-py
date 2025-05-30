@@ -823,30 +823,30 @@ def main():
     process_parser = subparsers.add_parser("process", help="Process certificates from config")
     
     # Get certificate command
-    get_parser = subparsers.add_parser("get", help="Get a specific certificate")
-    get_parser.add_argument("certificate_id", help="ID of the certificate to retrieve")
-    get_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate file")
-    get_parser.add_argument("--output-file", help="Name of the output file (defaults to certificate_id.crt)")
+    certificate_parser = subparsers.add_parser("certificate", help="Get a specific certificate")
+    certificate_parser.add_argument("certificate_id", help="ID of the certificate to retrieve")
+    certificate_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate file")
+    certificate_parser.add_argument("--output-file", help="Name of the output file (defaults to certificate_id.crt)")
     
     # Get private key command
-    key_parser = subparsers.add_parser("key", help="Get the private key for a certificate")
-    key_parser.add_argument("certificate_id", help="ID of the certificate whose key to retrieve")
-    key_parser.add_argument("--output-dir", default=".", help="Directory to save the private key file")
-    key_parser.add_argument("--output-file", help="Name of the output file (defaults to certificate_id.key)")
+    privatekey_parser = subparsers.add_parser("privatekey", help="Get the private key for a certificate")
+    privatekey_parser.add_argument("certificate_id", help="ID of the certificate whose key to retrieve")
+    privatekey_parser.add_argument("--output-dir", default=".", help="Directory to save the private key file")
+    privatekey_parser.add_argument("--output-file", help="Name of the output file (defaults to certificate_id.key)")
     
     # Get combined certificate (cert + key) command
-    combined_parser = subparsers.add_parser("combined", help="Get certificate with private key")
-    combined_parser.add_argument("certificate_id", help="ID of the certificate to retrieve")
-    combined_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
+    privatecert_parser = subparsers.add_parser("privatecert", help="Get certificate with private key")
+    privatecert_parser.add_argument("certificate_id", help="ID of the certificate to retrieve")
+    privatecert_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
                                help="Format of the certificate/key")
-    combined_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
+    privatecert_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
     
     # Get private certificate chain command
-    chain_parser = subparsers.add_parser("privatecertchain", help="Get certificate with private key and chain")
-    chain_parser.add_argument("certificate_id", help="ID of certificate to retrieve")
-    chain_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
+    privatecertchain_parser = subparsers.add_parser("privatecertchain", help="Get certificate with private key and chain")
+    privatecertchain_parser.add_argument("certificate_id", help="ID of certificate to retrieve")
+    privatecertchain_parser.add_argument("--format", choices=["pem", "pkcs12", "jks"], default="pem", 
                              help="Format of the certificate/key")
-    chain_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
+    privatecertchain_parser.add_argument("--output-dir", default=".", help="Directory to save the certificate files")
     
     args = parser.parse_args()
     
@@ -909,7 +909,7 @@ def main():
         if hasattr(args, 'output_dir') and args.output_dir != ".":
             output_dir = args.output_dir
             
-        if args.command == "get":
+        if args.command == "certificate":
             certificate = client.get_certificate(args.certificate_id)
             print(f"Retrieved certificate for ID: {args.certificate_id}")
             
@@ -943,7 +943,7 @@ def main():
             else:
                 print(f"Certificate unchanged: {output_file}")
             
-        elif args.command == "key":
+        elif args.command == "privatekey":
             private_key = client.get_private_key(args.certificate_id)
             print(f"Retrieved private key for certificate ID: {args.certificate_id}")
             
@@ -977,7 +977,7 @@ def main():
             else:
                 print(f"Private key unchanged: {output_file}")
             
-        elif args.command == "combined":
+        elif args.command == "privatecert":
             format_type = args.format if hasattr(args, 'format') else default_format
             certificate = client.get_combined_certificate(args.certificate_id, format=format_type)
             print(f"Retrieved combined certificate and key for ID: {args.certificate_id}")
@@ -1074,3 +1074,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
