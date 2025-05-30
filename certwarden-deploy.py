@@ -224,14 +224,14 @@ class CertWardenClient:
                                     'combined': privatecertchain_data
                                 }
                             elif retrieval_method == 'privatecert' or include_key:
-                                # Get combined certificate + key (default behavior)
-                                combined_data = self.get_combined_certificate(cert_id, format=format_type)
+                                # Get privatecert certificate + key (default behavior)
+                                privatecert_data = self.get_combined_certificate(cert_id, format=format_type)
                                 certificate_data = {
                                     'id': cert_id,
                                     'common_name': cert_id,  # Use cert_id as common_name for now
-                                    'certificate': combined_data,
-                                    'private_key': combined_data,  # The private key is included in the combined data
-                                    'combined': combined_data
+                                    'certificate': privatecert_data,
+                                    'private_key': privatecert_data,  # The private key is included in the privatecert data
+                                    'combined': privatecert_data
                                 }
                             else:
                                 # Get certificate only
@@ -382,7 +382,7 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
         'certificate': '.crt',
         'private_key': '.key',
         'privatecertchain': '_privatecertchain.pem',
-        'combined': '_combined.pem'
+        'privatecert': '_privatecert.pem'
     }
     
     if config and 'output' in config and 'extensions' in config['output']:
@@ -449,21 +449,21 @@ def save_combined_certificate(certificate_data, output_dir=".", config=None):
         saved_files['files']['privatecertchain'] = privatecertchain_path
         saved_files['files_changed']['privatecertchain'] = content_changed
         
-    # Save combined PEM (cert + chain + key) for convenience if content has changed
+    # Save privatecert PEM (cert + chain + key) for convenience if content has changed
     if "combined" in certificate_data:
-        combined_path = os.path.join(output_dir, f"{base_filename}{extensions['combined']}")
-        content_changed = file_content_changed(combined_path, certificate_data["combined"])
+        privatecert_path = os.path.join(output_dir, f"{base_filename}{extensions['privatecert']}")
+        content_changed = file_content_changed(privatecert_path, certificate_data["combined"])
         
         if content_changed:
-            with open(combined_path, "w") as f:
+            with open(privatecert_path, "w") as f:
                 f.write(certificate_data["combined"])
-            print(f"Combined PEM file updated: {combined_path}")
+            print(f"Privatecert PEM file updated: {privatecert_path}")
             saved_files['any_changed'] = True
         else:
-            print(f"Combined PEM file unchanged: {combined_path}")
+            print(f"Privatecert PEM file unchanged: {privatecert_path}")
             
-        saved_files['files']['combined'] = combined_path
-        saved_files['files_changed']['combined'] = content_changed
+        saved_files['files']['privatecert'] = privatecert_path
+        saved_files['files_changed']['privatecert'] = content_changed
         
     return saved_files
 
@@ -577,7 +577,7 @@ def create_default_config():
                 "certificate": ".crt",
                 "private_key": ".key",
                 "privatecertchain": "_privatecertchain.pem",
-                "combined": "_combined.pem"
+                "privatecert": "_privatecert.pem"
             }
         },
         "defaults": {
@@ -724,7 +724,7 @@ def process_certificates_from_config(config_path=None):
             'certificate': '.crt',
             'private_key': '.key',
             'privatecertchain': '_privatecertchain.pem',
-            'combined': '_combined.pem'
+            'privatecert': '_privatecert.pem'
         }
         
         if 'output' in config and 'extensions' in config['output']:
@@ -924,7 +924,7 @@ def main():
                 'certificate': '.crt',
                 'private_key': '.key',
                 'privatecertchain': '_privatecertchain.pem',
-                'combined': '_combined.pem'
+                'privatecert': '_privatecert.pem'
             }
             if 'output' in config and 'extensions' in config['output']:
                 extensions.update(config['output']['extensions'])
@@ -958,7 +958,7 @@ def main():
                 'certificate': '.crt',
                 'private_key': '.key',
                 'privatecertchain': '_privatecertchain.pem',
-                'combined': '_combined.pem'
+                'privatecert': '_privatecert.pem'
             }
             if 'output' in config and 'extensions' in config['output']:
                 extensions.update(config['output']['extensions'])
@@ -993,28 +993,28 @@ def main():
                 'certificate': '.crt',
                 'private_key': '.key',
                 'privatecertchain': '_privatecertchain.pem',
-                'combined': '_combined.pem'
+                'privatecert': '_privatecert.pem'
             }
             if 'output' in config and 'extensions' in config['output']:
                 extensions.update(config['output']['extensions'])
             
             # Save to file
             if format_type == "pem":
-                output_file = os.path.join(output_dir, f"{base_filename}{extensions['combined']}")
+                output_file = os.path.join(output_dir, f"{base_filename}{extensions['privatecert']}")
                 if file_content_changed(output_file, certificate):
                     with open(output_file, "w") as f:
                         f.write(certificate)
-                    print(f"Combined certificate updated: {output_file}")
+                    print(f"Privatecert certificate updated: {output_file}")
                 else:
-                    print(f"Combined certificate unchanged: {output_file}")
+                    print(f"Privatecert certificate unchanged: {output_file}")
             else:
                 output_file = os.path.join(output_dir, f"{base_filename}.{format_type}")
                 if file_content_changed(output_file, certificate):
                     with open(output_file, "wb") as f:
                         f.write(certificate)
-                    print(f"Combined certificate updated: {output_file}")
+                    print(f"Privatecert certificate updated: {output_file}")
                 else:
-                    print(f"Combined certificate unchanged: {output_file}")
+                    print(f"Privatecert certificate unchanged: {output_file}")
             
         elif args.command == "privatecertchain":
             format_type = args.format if hasattr(args, 'format') else default_format
