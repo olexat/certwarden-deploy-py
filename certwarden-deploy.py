@@ -209,44 +209,51 @@ class CertWardenClient:
                             print(f"  Retrieving certificate {cert_id}...")
                             certificate_data = {}
                             
-                            # Determine how to retrieve the certificate
-                            retrieval_method = group_config.get('retrieval_method', 'privatecert')
-                            
-                            if retrieval_method == 'privatecertchain':
-                                # Get certificate with private key and privatecertchain
-                                privatecertchain_data = self.get_private_cert_chain(cert_id, format=format_type)
-                                certificate_data = {
-                                    'id': cert_id,
-                                    'common_name': cert_id,  # Use cert_id as common_name for now
-                                    'certificate': privatecertchain_data,
-                                    'private_key': privatecertchain_data,  # The private key is included in the privatecertchain data
-                                    'chain': privatecertchain_data,
-                                    'combined': privatecertchain_data
-                                }
-                            elif retrieval_method == 'privatecert' or include_key:
-                                # Get privatecert certificate + key (default behavior)
-                                privatecert_data = self.get_combined_certificate(cert_id, format=format_type)
-                                certificate_data = {
-                                    'id': cert_id,
-                                    'common_name': cert_id,  # Use cert_id as common_name for now
-                                    'certificate': privatecert_data,
-                                    'private_key': privatecert_data,  # The private key is included in the privatecert data
-                                    'combined': privatecert_data
-                                }
-                            else:
-                                # Get certificate only
+                            # Always fetch all 4 types of data when using process command
+                            try:
+                                # 1. Get individual certificate
                                 cert_data = self.get_certificate(cert_id)
-                                certificate_data = {
+                                certificate_data['certificate'] = cert_data
+                                print(f"    ✓ Retrieved certificate")
+                            except Exception as e:
+                                print(f"    ✗ Failed to retrieve certificate: {e}")
+                            
+                            try:
+                                # 2. Get private key
+                                key_data = self.get_private_key(cert_id)
+                                certificate_data['private_key'] = key_data
+                                print(f"    ✓ Retrieved private key")
+                            except Exception as e:
+                                print(f"    ✗ Failed to retrieve private key: {e}")
+                            
+                            try:
+                                # 3. Get combined certificate + private key
+                                privatecert_data = self.get_combined_certificate(cert_id, format=format_type)
+                                certificate_data['combined'] = privatecert_data
+                                print(f"    ✓ Retrieved privatecert (cert+key)")
+                            except Exception as e:
+                                print(f"    ✗ Failed to retrieve privatecert: {e}")
+                            
+                            try:
+                                # 4. Get certificate + private key + chain
+                                privatecertchain_data = self.get_private_cert_chain(cert_id, format=format_type)
+                                certificate_data['chain'] = privatecertchain_data
+                                print(f"    ✓ Retrieved privatecertchain (cert+key+chain)")
+                            except Exception as e:
+                                print(f"    ✗ Failed to retrieve privatecertchain: {e}")
+                            
+                            # Add metadata
+                            if certificate_data:
+                                certificate_data.update({
                                     'id': cert_id,
                                     'common_name': cert_id,  # Use cert_id as common_name for now
-                                    'certificate': cert_data
-                                }
-                                
-                            if certificate_data:
-                                certificate_data['_group'] = group_name
-                                certificate_data['_output'] = group_config.get('output', {})
+                                    '_group': group_name,
+                                    '_output': group_config.get('output', {})
+                                })
                                 results.append(certificate_data)
-                            
+                            else:
+                                print(f"    ✗ No data retrieved for certificate {cert_id}")
+                                
                         except Exception as e:
                             print(f"  Error retrieving certificate {cert_id}: {e}")
                             
@@ -590,7 +597,6 @@ def create_default_config():
         "certificates": {
             "example_group": {
                 "method": "individual",
-                "retrieval_method": "privatecert",  # Options: privatecert, privatecertchain, individual
                 "cert_secret": "example_cert_api_key",  # Replace with your actual key
                 "key_secret": "example_key_api_key",    # Replace with your actual key
                 "certificates": ["cert_id_here"],

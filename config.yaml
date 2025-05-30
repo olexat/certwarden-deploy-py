@@ -33,7 +33,6 @@ certificates:
   production_web_servers:
     method: "individual"
     format: "pem"
-    retrieval_method: "privatecert"  # privatecert, privatecertchain, individual
     # Certificate-specific API keys
     cert_secret: "examplekey_notvalid_cert123"  # API key for certificate operations
     key_secret: "examplekey_notvalid_key456"    # API key for private key operations
