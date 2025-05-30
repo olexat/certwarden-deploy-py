@@ -217,7 +217,7 @@ class CertWardenClient:
                                 certificate_data['certificate'] = cert_data
                                 print(f"    ✓ Retrieved certificate")
                             except Exception as e:
-                                print(f"    ✗ Failed to retrieve certificate: {e}")
+                                print(f"    ✗ Failed to retrieve certificate: {e}", file=sys.stderr)
                                 retrieval_errors.append(f"certificate: {e}")
                             
                             try:
@@ -226,7 +226,7 @@ class CertWardenClient:
                                 certificate_data['private_key'] = key_data
                                 print(f"    ✓ Retrieved private key")
                             except Exception as e:
-                                print(f"    ✗ Failed to retrieve private key: {e}")
+                                print(f"    ✗ Failed to retrieve private key: {e}", file=sys.stderr)
                                 retrieval_errors.append(f"private key: {e}")
                             
                             try:
@@ -235,7 +235,7 @@ class CertWardenClient:
                                 certificate_data['combined'] = privatecert_data
                                 print(f"    ✓ Retrieved privatecert (cert+key)")
                             except Exception as e:
-                                print(f"    ✗ Failed to retrieve privatecert: {e}")
+                                print(f"    ✗ Failed to retrieve privatecert: {e}", file=sys.stderr)
                                 retrieval_errors.append(f"privatecert: {e}")
                             
                             try:
@@ -244,7 +244,7 @@ class CertWardenClient:
                                 certificate_data['chain'] = privatecertchain_data
                                 print(f"    ✓ Retrieved privatecertchain (cert+key+chain)")
                             except Exception as e:
-                                print(f"    ✗ Failed to retrieve privatecertchain: {e}")
+                                print(f"    ✗ Failed to retrieve privatecertchain: {e}", file=sys.stderr)
                                 retrieval_errors.append(f"privatecertchain: {e}")
                             
                             # Add metadata and errors
@@ -258,7 +258,7 @@ class CertWardenClient:
                                 })
                                 results.append(certificate_data)
                             else:
-                                print(f"    ✗ No data retrieved for certificate {cert_id}")
+                                print(f"    ✗ No data retrieved for certificate {cert_id}", file=sys.stderr)
                                 # Still add to results but mark as failed
                                 certificate_data = {
                                     'id': cert_id,
@@ -271,7 +271,7 @@ class CertWardenClient:
                                 results.append(certificate_data)
                                 
                         except Exception as e:
-                            print(f"  Error retrieving certificate {cert_id}: {e}")
+                            print(f"  Error retrieving certificate {cert_id}: {e}", file=sys.stderr)
                             # Add failed certificate to results
                             certificate_data = {
                                 'id': cert_id,
@@ -285,7 +285,7 @@ class CertWardenClient:
                             
             elif method == 'all_active':
                 # all_active method is no longer supported since we removed bulk operations
-                print(f"  Error: all_active method is not supported")
+                print(f"  Error: all_active method is not supported", file=sys.stderr)
                 continue
             
             # Group-specific certificates retrieved, now check if we need to fetch separate keys
@@ -293,7 +293,7 @@ class CertWardenClient:
             
             if not include_key and group_config.get('fetch_keys', False) and group_certificates:
                 # Note: bulk private key fetching is not supported by the API
-                print(f"  Warning: fetch_keys option is not supported - bulk private key retrieval unavailable")
+                print(f"  Warning: fetch_keys option is not supported - bulk private key retrieval unavailable", file=sys.stderr)
         
         return results
 
@@ -343,7 +343,7 @@ def file_content_changed(file_path, new_content):
         return existing_hash != new_hash
         
     except Exception as e:
-        print(f"  Warning: Could not read existing file {file_path}: {e}")
+        print(f"  Warning: Could not read existing file {file_path}: {e}", file=sys.stderr)
         return True  # Assume changed if we can't read the file
 
 
@@ -583,13 +583,13 @@ def run_action_command(action_config, cert_info, is_new=False, files_changed=Fal
                     print(f"  Output: {result.stdout}")
                 return True
             else:
-                print(f"  Command failed with exit code {result.returncode}")
+                print(f"  Command failed with exit code {result.returncode}", file=sys.stderr)
                 if result.stderr:
-                    print(f"  Error: {result.stderr}")
+                    print(f"  Error: {result.stderr}", file=sys.stderr)
                 return False
                 
         except Exception as e:
-            print(f"  Error executing command: {e}")
+            print(f"  Error executing command: {e}", file=sys.stderr)
             return False
     
     return None  # Should never reach here, but return None as default
@@ -678,7 +678,7 @@ def load_config(config_path=None):
                 print(f"Loaded configuration from {config_path}")
                 return config
         except Exception as e:
-            print(f"Error loading config file: {e}")
+            print(f"Error loading config file: {e}", file=sys.stderr)
     
     # Return default config if no file found or error occurred
     return create_default_config()
@@ -700,7 +700,7 @@ def save_config(config, config_path):
             yaml.dump(config, file, default_flow_style=False)
             print(f"Configuration saved to {config_path}")
     except Exception as e:
-        print(f"Error saving config file: {e}")
+        print(f"Error saving config file: {e}", file=sys.stderr)
 
 
 def process_certificates_from_config(config_path=None):
@@ -717,14 +717,14 @@ def process_certificates_from_config(config_path=None):
     config = load_config(config_path)
     
     if 'certificates' not in config:
-        print("No certificate configuration found in config file")
+        print("No certificate configuration found in config file", file=sys.stderr)
         return {'error': 'No certificate configuration found', 'exit_code': 1}
     
     # Create client
     try:
         client = CertWardenClient(config_file=config_path)
     except Exception as e:
-        print(f"Error creating CertWarden client: {e}")
+        print(f"Error creating CertWarden client: {e}", file=sys.stderr)
         return {'error': f'Client creation failed: {e}', 'exit_code': 1}
     
     # Check if actions are enabled
@@ -739,11 +739,11 @@ def process_certificates_from_config(config_path=None):
         certificates = client.get_certificates_by_config(config['certificates'])
         print(f"\nRetrieved {len(certificates)} certificates in total")
     except Exception as e:
-        print(f"Error retrieving certificates: {e}")
+        print(f"Error retrieving certificates: {e}", file=sys.stderr)
         return {'error': f'Certificate retrieval failed: {e}', 'exit_code': 1}
     
     if not certificates:
-        print("No certificates were successfully retrieved")
+        print("No certificates were successfully retrieved", file=sys.stderr)
         return {'error': 'No certificates retrieved', 'exit_code': 1}
     
     # Track new, changed, and unchanged certificates
@@ -812,7 +812,7 @@ def process_certificates_from_config(config_path=None):
             # Check if we have any certificate data at all
             has_any_data = any(key in cert for key in ['certificate', 'private_key', 'combined', 'chain'])
             if not has_any_data:
-                print(f"  Error: No certificate data available for {cert_id}")
+                print(f"  Error: No certificate data available for {cert_id}", file=sys.stderr)
                 failed_certificates.append({
                     'certificate_id': cert_id,
                     'common_name': common_name,
@@ -860,7 +860,7 @@ def process_certificates_from_config(config_path=None):
                             # action_result == None means command was not attempted (conditions not met)
                             # action_result == True means command succeeded
                         except Exception as e:
-                            print(f"  Error running action: {e}")
+                            print(f"  Error running action: {e}", file=sys.stderr)
                             action_failures.append({
                                 'certificate_id': cert_id,
                                 'common_name': common_name,
@@ -868,7 +868,7 @@ def process_certificates_from_config(config_path=None):
                                 'error': f'Action execution error: {e}'
                             })
         except Exception as e:
-            print(f"  Error processing certificate {cert_id}: {e}")
+            print(f"  Error processing certificate {cert_id}: {e}", file=sys.stderr)
             failed_certificates.append({
                 'certificate_id': cert_id,
                 'common_name': common_name,
@@ -890,14 +890,14 @@ def process_certificates_from_config(config_path=None):
     
     # Print detailed error information if there are failures
     if failed_certificates:
-        print("\nFailed Certificates:")
+        print("\nFailed Certificates:", file=sys.stderr)
         for failure in failed_certificates:
-            print(f"  - {failure['common_name']} ({failure['certificate_id']}): {failure['error']}")
+            print(f"  - {failure['common_name']} ({failure['certificate_id']}): {failure['error']}", file=sys.stderr)
     
     if action_failures:
-        print("\nAction Failures:")
+        print("\nAction Failures:", file=sys.stderr)
         for failure in action_failures:
-            print(f"  - {failure['common_name']} ({failure['certificate_id']}) in group {failure['group']}: {failure['error']}")
+            print(f"  - {failure['common_name']} ({failure['certificate_id']}) in group {failure['group']}: {failure['error']}", file=sys.stderr)
     
     # Determine exit code
     exit_code = 0
@@ -996,6 +996,9 @@ def main():
             save_config(config, config_path)
             print(f"API key added to configuration")
             return
+        else:
+            print("Unknown config command", file=sys.stderr)
+            sys.exit(1)
     
     # Handle process command
     if args.command == "process":
@@ -1006,7 +1009,7 @@ def main():
             else:
                 sys.exit(0)
         except Exception as e:
-            print(f"Fatal error during certificate processing: {e}")
+            print(f"Fatal error during certificate processing: {e}", file=sys.stderr)
             sys.exit(1)
     
     # Load configuration for other commands
@@ -1020,14 +1023,22 @@ def main():
             config['api']['base_url'] = args.base_url
             
         # Create API client with config
-        client = CertWardenClient(api_key=args.api_key, config_file=args.config)
+        try:
+            client = CertWardenClient(api_key=args.api_key, config_file=args.config)
+        except Exception as e:
+            print(f"Error creating CertWarden client: {e}", file=sys.stderr)
+            sys.exit(1)
         
         # Default output directory from config
         output_dir = "."
         if 'output' in config and 'directory' in config['output']:
             output_dir = config['output']['directory']
             # Create directory if it doesn't exist
-            os.makedirs(output_dir, exist_ok=True)
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+            except Exception as e:
+                print(f"Error creating output directory {output_dir}: {e}", file=sys.stderr)
+                sys.exit(1)
             
         # Default format from config
         default_format = "pem"
@@ -1037,6 +1048,11 @@ def main():
         # Handle output directory from command args if provided
         if hasattr(args, 'output_dir') and args.output_dir != ".":
             output_dir = args.output_dir
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+            except Exception as e:
+                print(f"Error creating output directory {output_dir}: {e}", file=sys.stderr)
+                sys.exit(1)
             
         if args.command == "certificate":
             try:
@@ -1066,14 +1082,18 @@ def main():
                     output_file = os.path.join(output_dir, f"{base_filename}{extensions['certificate']}")
                     
                 # Check if content has changed before writing
-                if file_content_changed(output_file, certificate):
-                    with open(output_file, "w") as f:
-                        f.write(certificate)
-                    print(f"Certificate updated: {output_file}")
-                else:
-                    print(f"Certificate unchanged: {output_file}")
+                try:
+                    if file_content_changed(output_file, certificate):
+                        with open(output_file, "w") as f:
+                            f.write(certificate)
+                        print(f"Certificate updated: {output_file}")
+                    else:
+                        print(f"Certificate unchanged: {output_file}")
+                except Exception as e:
+                    print(f"Error writing certificate file {output_file}: {e}", file=sys.stderr)
+                    sys.exit(1)
             except Exception as e:
-                print(f"Error retrieving certificate: {e}")
+                print(f"Error retrieving certificate: {e}", file=sys.stderr)
                 sys.exit(1)
             
         elif args.command == "privatekey":
@@ -1104,14 +1124,18 @@ def main():
                     output_file = os.path.join(output_dir, f"{base_filename}{extensions['private_key']}")
                     
                 # Check if content has changed before writing
-                if file_content_changed(output_file, private_key):
-                    with open(output_file, "w") as f:
-                        f.write(private_key)
-                    print(f"Private key updated: {output_file}")
-                else:
-                    print(f"Private key unchanged: {output_file}")
+                try:
+                    if file_content_changed(output_file, private_key):
+                        with open(output_file, "w") as f:
+                            f.write(private_key)
+                        print(f"Private key updated: {output_file}")
+                    else:
+                        print(f"Private key unchanged: {output_file}")
+                except Exception as e:
+                    print(f"Error writing private key file {output_file}: {e}", file=sys.stderr)
+                    sys.exit(1)
             except Exception as e:
-                print(f"Error retrieving private key: {e}")
+                print(f"Error retrieving private key: {e}", file=sys.stderr)
                 sys.exit(1)
             
         elif args.command == "privatecert":
@@ -1137,24 +1161,28 @@ def main():
                     extensions.update(config['output']['extensions'])
                 
                 # Save to file
-                if format_type == "pem":
-                    output_file = os.path.join(output_dir, f"{base_filename}{extensions['privatecert']}")
-                    if file_content_changed(output_file, certificate):
-                        with open(output_file, "w") as f:
-                            f.write(certificate)
-                        print(f"Privatecert certificate updated: {output_file}")
+                try:
+                    if format_type == "pem":
+                        output_file = os.path.join(output_dir, f"{base_filename}{extensions['privatecert']}")
+                        if file_content_changed(output_file, certificate):
+                            with open(output_file, "w") as f:
+                                f.write(certificate)
+                            print(f"Privatecert certificate updated: {output_file}")
+                        else:
+                            print(f"Privatecert certificate unchanged: {output_file}")
                     else:
-                        print(f"Privatecert certificate unchanged: {output_file}")
-                else:
-                    output_file = os.path.join(output_dir, f"{base_filename}.{format_type}")
-                    if file_content_changed(output_file, certificate):
-                        with open(output_file, "wb") as f:
-                            f.write(certificate)
-                        print(f"Privatecert certificate updated: {output_file}")
-                    else:
-                        print(f"Privatecert certificate unchanged: {output_file}")
+                        output_file = os.path.join(output_dir, f"{base_filename}.{format_type}")
+                        if file_content_changed(output_file, certificate):
+                            with open(output_file, "wb") as f:
+                                f.write(certificate)
+                            print(f"Privatecert certificate updated: {output_file}")
+                        else:
+                            print(f"Privatecert certificate unchanged: {output_file}")
+                except Exception as e:
+                    print(f"Error writing privatecert file: {e}", file=sys.stderr)
+                    sys.exit(1)
             except Exception as e:
-                print(f"Error retrieving privatecert: {e}")
+                print(f"Error retrieving privatecert: {e}", file=sys.stderr)
                 sys.exit(1)
             
             # Save to file
