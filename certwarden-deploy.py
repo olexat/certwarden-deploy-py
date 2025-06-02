@@ -329,17 +329,17 @@ def file_content_changed(file_path, new_content):
     
     try:
         # Read existing file content
-        if isinstance(new_content, bytes):
+#        if isinstance(new_content, bytes):
+        if True:  # Always read in binary
             with open(file_path, 'rb') as f:
                 existing_content = f.read()
-        else:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                existing_content = f.read()
+#        else:
+#            with open(file_path, 'r', encoding='utf-8') as f:
+#                existing_content = f.read()
         
         # Compare hashes
         existing_hash = calculate_content_hash(existing_content)
         new_hash = calculate_content_hash(new_content)
-        
         return existing_hash != new_hash
         
     except Exception as e:
