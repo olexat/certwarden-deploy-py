@@ -1,28 +1,47 @@
+# CertWarden API Client Configuration with Separate API Keys
+
+# Base URL of the CertWarden instance
+base_url: "https://certwarden.example.com"
+
+# Global API headers (applied to all requests)
 api:
-  base_url: https://api.certwarden.com
   headers:
-    Content-Type: application/json
-certificates:
-  - common_name: example.com
-    cert_id: 123
-    on_success: "systemctl reload nginx"
-  - common_name: internal.example.com
-    cert_id: 456
-    on_success: "/usr/local/bin/deploy_internal_cert.sh"
-defaults:
-  expiry_alert_days: 30
-  format: pem
-  output:
-    directory: ./certificates
-  on_success: "systemctl reload nginx"  # example command
-defaults:
-  expiry_alert_days: 30
-  format: pem
+    Content-Type: "application/json"
+
+# Output configuration
 output:
-  directory: ./certificates
+  directory: "./certificates"
+  filename_template: "{common_name}_{cert_id}"
   extensions:
-    certificate: .crt
-    chain: _chain.pem
-    combined: _combined.pem
-    private_key: .key
-  filename_template: '{common_name}_{cert_id}'
+    certificate: ".crt"
+    private_key: ".key"
+    privatecertchain: "_privatecertchain.pem"
+    privatecert: "_privatecert.pem"
+
+# Default options
+defaults:
+  format: "pem"
+  expiry_alert_days: 30
+
+# Actions global setting
+actions:
+  enabled: true
+
+# Certificate groups to retrieve
+certificates:
+  # Group 1: Production web server certificates
+  production_web_servers:
+    method: "individual"
+    format: "pem"
+    # Certificate-specific API keys
+    cert_secret: "examplekey_notvalid_cert123"  # API key for certificate operations
+    key_secret: "examplekey_notvalid_key456"    # API key for private key operations
+    certificates:
+      - "example.com"
+      - "api.example.com"
+    output:
+      directory: "./certificates/production"
+    # Action to run after certificate retrieval
+    action:
+      command: "cp {certificate} {private_key} /etc/nginx/ssl/ && systemctl reload nginx"
+      run_on: "new_or_changed"  # Only run for new or changed certificates
