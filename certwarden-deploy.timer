@@ -1,0 +1,11 @@
+[Unit]
+Description=Run CertWarden Certificate Deployment on Mondays and Thursdays
+Requires=certwarden-deploy.service
+
+[Timer]
+OnCalendar=Mon,Thu *-*-* *:*:00
+RandomizedDelaySec=86400
+Persistent=true
+
+[Install]
+WantedBy=timers.target
