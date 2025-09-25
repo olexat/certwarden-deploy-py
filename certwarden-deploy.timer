@@ -3,8 +3,8 @@ Description=Run CertWarden Certificate Deployment on Mondays and Thursdays
 Requires=certwarden-deploy.service
 
 [Timer]
-OnCalendar=Mon,Thu *-*-* *:*:00
-RandomizedDelaySec=86400
+OnCalendar=Mon,Thu *-*-* 09:00:00
+RandomizedDelaySec=7h
 Persistent=true
 
 [Install]
