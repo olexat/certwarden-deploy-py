@@ -569,11 +569,11 @@ def run_action_command(action_config, cert_info, is_new=False, files_changed=Fal
         try:
             print("  Running action command: {}".format(formatted_command))
             result = subprocess.run(
-                formatted_command, 
-                shell=True, 
-                stdout=subprocess.PIPE, 
+                formatted_command,
+                shell=True,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                universal_newlines=True
             )
             
             # Check if command was successful
