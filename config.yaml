@@ -6,7 +6,7 @@ base_url: "https://certwarden.example.com/certwarden/api"
 # Global API headers (applied to all requests)
 api:
   headers:
-    Content-Type: "application/json"
+    Content-Type: "application/txt"
 
 # Output configuration
 output:
