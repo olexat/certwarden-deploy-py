@@ -1,7 +1,7 @@
 # CertWarden API Client Configuration with Separate API Keys
 
-# Base URL of the CertWarden instance
-base_url: "https://certwarden.example.com"
+# Base URL of the CertWarden API instance
+base_url: "https://certwarden.example.com/certwarden/api"
 
 # Global API headers (applied to all requests)
 api:
