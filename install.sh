@@ -19,7 +19,7 @@ sudo apt update
 # Install required packages
 echo ""
 echo "Installing Python 3 and required libraries..."
-sudo apt install -y python3 python3-pip python3-requests python3-yaml
+sudo apt install -y python3 python3-requests python3-yaml
 
 # Install the script
 echo ""
