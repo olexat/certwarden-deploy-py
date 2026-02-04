@@ -1,2 +1,3 @@
 prod.yaml
 certificates/
+__pycache__/
