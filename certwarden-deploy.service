@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=oneshot
 User=root
 Group=root
+UMask=0027
 ExecStart=/usr/local/bin/certwarden-deploy.py --config /etc/certwarden-deploy/config.yaml process
 # Uncomment if journald MaxLevelStore filters out info logs:
 #SyslogLevel=warning

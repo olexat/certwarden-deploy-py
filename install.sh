@@ -30,6 +30,7 @@ sudo chmod +x /usr/local/bin/certwarden-deploy.py
 # Create config directory
 echo "Creating config directory /etc/certwarden-deploy..."
 sudo mkdir -p /etc/certwarden-deploy
+sudo chmod 750 /etc/certwarden-deploy
 
 # Install config file (if it doesn't already exist)
 if [ -f "$SCRIPT_DIR/config.yaml" ]; then
@@ -38,6 +39,7 @@ if [ -f "$SCRIPT_DIR/config.yaml" ]; then
     else
         echo "Installing config.yaml to /etc/certwarden-deploy..."
         sudo cp "$SCRIPT_DIR/config.yaml" /etc/certwarden-deploy/config.yaml
+        sudo chmod 640 /etc/certwarden-deploy/config.yaml
         echo "IMPORTANT: Edit /etc/certwarden-deploy/config.yaml with your API keys and certificate IDs"
     fi
 else
