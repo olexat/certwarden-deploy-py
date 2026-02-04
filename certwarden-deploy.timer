@@ -5,7 +5,8 @@ Requires=certwarden-deploy.service
 [Timer]
 OnCalendar=Mon,Thu *-*-* 09:00:00
 RandomizedDelaySec=7h
-Persistent=true
+OnBootSec=5min
+Persistent=false
 
 [Install]
 WantedBy=timers.target
